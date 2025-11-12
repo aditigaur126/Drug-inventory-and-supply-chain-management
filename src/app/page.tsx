@@ -55,7 +55,7 @@ const HomePage = () => {
               <div className="mt-8 flex gap-4">
                 <RevealAnimation className="flex justify-center items-center gap-4">
                   <Link
-                    href="https://github.com/MediNexus-SIH/web-app"
+                    href="https://github.com/aditigaur126/Drug-inventory-and-supply-chain-management"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center"
