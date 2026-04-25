@@ -4,6 +4,7 @@ import validateSession from "@/lib/validateSession";
 import NotificationSchema from "@/lib/zodSchema/notiSchema";
 import { subMonths } from "date-fns";
 import { NextResponse } from "next/server";
+import { getMissingTableMessage, isMissingTableError } from "@/lib/prismaErrors";
 
 export async function GET(req: Request) {
   try {
@@ -49,6 +50,14 @@ export async function GET(req: Request) {
     return NextResponse.json({ notifications }, { status: 200 });
   } catch (error: any) {
     console.error(error);
+
+    if (isMissingTableError(error)) {
+      return NextResponse.json(
+        { error: getMissingTableMessage(error) },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
       {
         error: "Internal Server Error",
@@ -100,6 +109,13 @@ export async function POST(req: Request) {
     return NextResponse.json(newNotification, { status: 201 });
   } catch (error: any) {
     console.error("Error creating notification:", error);
+
+    if (isMissingTableError(error)) {
+      return NextResponse.json(
+        { error: getMissingTableMessage(error) },
+        { status: 503 }
+      );
+    }
 
     if (error.name === "ZodError") {
       // Handle validation errors

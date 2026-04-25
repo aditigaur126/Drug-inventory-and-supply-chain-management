@@ -12,6 +12,7 @@ import {
   isEmailValid,
   readOtpSessionValue,
 } from "@/lib/otp";
+import { getMissingTableMessage, isMissingTableError } from "@/lib/prismaErrors";
 
 type RequestBody = {
   email?: string;
@@ -162,6 +163,14 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("OTP request error:", error);
+
+    if (isMissingTableError(error)) {
+      return NextResponse.json(
+        { error: getMissingTableMessage(error) },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Failed to send OTP. Please try again." },
       { status: 500 }

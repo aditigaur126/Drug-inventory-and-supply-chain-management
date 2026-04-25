@@ -959,8 +959,8 @@ export default function MainPage() {
   useEffect(() => {
     if (step === 5) {
       const timer = setTimeout(() => {
-        router.push("/dashboard");
-      }, 2000);
+        router.replace("/dashboard");
+      }, 1500); // Reduced from 2000ms for faster UX
 
       return () => clearTimeout(timer);
     }

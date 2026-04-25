@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,29 +42,24 @@ export default function Component() {
   const router = useRouter();
   const { data: session, status } = useSession();
 
+  // Consolidated redirect logic - runs only once
   useEffect(() => {
-    let redirectTimer: NodeJS.Timeout;
-
-    const handleRedirection = async () => {
-      if (status === "authenticated" && session) {
-        redirectTimer = setTimeout(() => {
-          router.push("/dashboard");
-        }, 500); // Adjust delay as needed
-      }
-    };
-
-    handleRedirection();
-
-    return () => {
-      if (redirectTimer) clearTimeout(redirectTimer);
-    };
-  }, [session, status, router]);
-
-  useEffect(() => {
+    // If already authenticated, redirect immediately without delay
+    if (status === "authenticated" && session) {
+      router.replace("/dashboard");
+    }
+    // OTP field auto-focus - combined with first effect
     if (step === "otp") {
       otpRefs.current[0]?.focus();
     }
-  }, [step]);
+    // Confirmation redirect after showing success message
+    if (step === "confirmation") {
+      const timer = setTimeout(() => {
+        router.replace("/dashboard");
+      }, 1500); // Reduced from 2000ms for faster UX
+      return () => clearTimeout(timer);
+    }
+  }, [status, session, step, router]);
 
   const requestOtp = async () => {
     setOtpLoading(true);
@@ -132,22 +127,6 @@ export default function Component() {
       otpRefs.current[index - 1]?.focus();
     }
   };
-
-  const redirectToDashboard = useCallback(() => {
-    router.push("/dashboard");
-  }, [router]);
-
-  useEffect(() => {
-    if (step === "confirmation") {
-      const timer = setTimeout(() => {
-        redirectToDashboard();
-      }, 2000);
-
-      return () => {
-        clearTimeout(timer);
-      };
-    }
-  }, [step, redirectToDashboard]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

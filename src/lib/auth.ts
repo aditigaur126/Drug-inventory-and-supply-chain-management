@@ -105,6 +105,15 @@ export const options: NextAuthOptions = {
 
       return session;
     },
+
+    async redirect({ url, baseUrl }) {
+      // Allow callback URL redirection if it's a relative URL (starts with /)
+      if (url.startsWith("/")) return url;
+      // If it's the same origin, allow it
+      else if (new URL(url).origin === baseUrl) return url;
+      // Default to dashboard
+      return `${baseUrl}/dashboard`;
+    },
   },
   session: {
     strategy: "jwt",

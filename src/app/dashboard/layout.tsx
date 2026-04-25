@@ -9,10 +9,12 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const session = await getServerSideProps();
-  console.log(session.user)
+
+  // Fast-fail: redirect to signin if not authenticated
   if (!session.sessionStatus) {
     redirect("/auth/signin");
   }
+
   return (
     <div className="min-h-screen">
       <div className="flex-1 flex flex-col">

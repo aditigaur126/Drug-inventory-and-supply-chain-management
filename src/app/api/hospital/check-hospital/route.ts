@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/config/prisma.config";
+import { getMissingTableMessage, isMissingTableError } from "@/lib/prismaErrors";
 
 export async function POST(req: Request) {
   try {
@@ -29,6 +30,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ existingHospital }, { status: 200 });
   } catch (error) {
     console.error("Error checking for existing hospital:", error);
+
+    if (isMissingTableError(error)) {
+      return NextResponse.json(
+        { error: getMissingTableMessage(error) },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

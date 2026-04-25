@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/config/prisma.config";
 import validateSession from "@/lib/validateSession";
+import { getMissingTableMessage, isMissingTableError } from "@/lib/prismaErrors";
 
 // POST method to add an inventory item
 export async function POST(req: Request) {
@@ -103,6 +104,14 @@ export async function POST(req: Request) {
     return NextResponse.json(newItems, { status: 201 });
   } catch (error) {
     console.error(error);
+
+    if (isMissingTableError(error)) {
+      return NextResponse.json(
+        { error: getMissingTableMessage(error) },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Unable to add inventory items." },
       { status: 500 }
@@ -155,6 +164,14 @@ export async function GET() {
     return NextResponse.json(flattenedItems, { status: 200 });
   } catch (error) {
     console.error(error);
+
+    if (isMissingTableError(error)) {
+      return NextResponse.json(
+        { error: getMissingTableMessage(error) },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Unable to retrieve inventory items." },
       { status: 500 }
@@ -211,6 +228,14 @@ export async function PUT(req: Request) {
     return NextResponse.json(updatedItem, { status: 200 });
   } catch (error) {
     console.error(error);
+
+    if (isMissingTableError(error)) {
+      return NextResponse.json(
+        { error: getMissingTableMessage(error) },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Unable to update inventory item." },
       { status: 500 }
