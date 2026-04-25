@@ -68,6 +68,7 @@ const branches: Branch[] = [
 export default function BranchesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBranch, setSelectedBranch] = useState("all");
+  const [selectedStockFilter, setSelectedStockFilter] = useState("all");
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [selectedMedicine, setSelectedMedicine] = useState<Medicine | null>(
@@ -159,6 +160,13 @@ export default function BranchesPage() {
     (item) =>
       (selectedBranch === "all" ||
         item.branchId === parseInt(selectedBranch)) &&
+      (selectedStockFilter === "all" ||
+        (selectedStockFilter === "stock" && item.stock > 0) ||
+        (selectedStockFilter === "low-stock" &&
+          item.stock > 0 &&
+          item.stock <= item.critical) ||
+        (selectedStockFilter === "over-stock" && item.stock > item.capacity) ||
+        (selectedStockFilter === "non-stock" && item.stock <= 0)) &&
       item.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -220,12 +228,6 @@ export default function BranchesPage() {
     // Logic to reject transfer
     console.log(`Rejected transfer ${transferId}`);
   };
-
-  interface Branch {
-    id: number;
-    name: string;
-  }
-
   return (
     <div className="p-4 w-full min-h-screen flex-1 overflow-y-auto space-y-4 md:p-6 bg-muted/40">
       <BreadCrumb
@@ -259,6 +261,21 @@ export default function BranchesPage() {
                   {branch.name}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={selectedStockFilter}
+            onValueChange={setSelectedStockFilter}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Select stock filter" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Stock States</SelectItem>
+              <SelectItem value="stock">Stock</SelectItem>
+              <SelectItem value="low-stock">Low Stock</SelectItem>
+              <SelectItem value="over-stock">Over Stock</SelectItem>
+              <SelectItem value="non-stock">Non Stock</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -354,68 +371,76 @@ export default function BranchesPage() {
         </TabsList>
 
         <TabsContent value="inventory">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredInventory.map((item) => {
-              const branch = branches.find((b) => b.id === item.branchId);
-              const stockPercentage = (item.stock / item.capacity) * 100;
-              const stockLevelColor = getStockLevelColor(
-                item.stock,
-                item.capacity,
-                item.critical
-              );
+          {filteredInventory.length === 0 ? (
+            <Card>
+              <CardContent className="py-10 text-center text-muted-foreground">
+                No medicines found for the selected branch/stock filters.
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredInventory.map((item) => {
+                const branch = branches.find((b) => b.id === item.branchId);
+                const stockPercentage = (item.stock / item.capacity) * 100;
+                const stockLevelColor = getStockLevelColor(
+                  item.stock,
+                  item.capacity,
+                  item.critical
+                );
 
-              return (
-                <Card
-                  key={item.id}
-                  className="overflow-hidden transition-transform transform hover:scale-105 duration-300"
-                >
-                  <CardHeader className="pb-2">
-                    <CardTitle className="flex justify-between items-center">
-                      <span>{item.name}</span>
-                      {item.stock <= item.critical && (
-                        <AlertTriangle className="h-5 w-5 text-red-500" />
-                      )}
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      {branch?.name}
-                    </p>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="mb-2">
-                      <div className="flex justify-between text-sm mb-1">
-                        <span>Stock Level</span>
-                        <span>
-                          {item.stock} / {item.capacity}
-                        </span>
+                return (
+                  <Card
+                    key={item.id}
+                    className="overflow-hidden transition-transform transform hover:scale-105 duration-300"
+                  >
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex justify-between items-center">
+                        <span>{item.name}</span>
+                        {item.stock <= item.critical && (
+                          <AlertTriangle className="h-5 w-5 text-red-500" />
+                        )}
+                      </CardTitle>
+                      <p className="text-sm text-muted-foreground">
+                        {branch?.name}
+                      </p>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="mb-2">
+                        <div className="flex justify-between text-sm mb-1">
+                          <span>Stock Level</span>
+                          <span>
+                            {item.stock} / {item.capacity}
+                          </span>
+                        </div>
+                        <Progress
+                          value={stockPercentage}
+                          className={`h-2 ${stockLevelColor}`}
+                          indicatorColor="#D0D0D0"
+                        />
                       </div>
-                      <Progress
-                        value={stockPercentage}
-                        className={`h-2 ${stockLevelColor}`}
-                        indicatorColor="#D0D0D0"
-                      />
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium">
-                        {stockPercentage < 25
-                          ? "Low Stock"
-                          : stockPercentage > 75
-                          ? "Well Stocked"
-                          : "Adequate"}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleTransferRequest(item)}
-                      >
-                        <ArrowLeftRight className="h-4 w-4 mr-2" />
-                        Transfer
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium">
+                          {stockPercentage < 25
+                            ? "Low Stock"
+                            : stockPercentage > 75
+                            ? "Well Stocked"
+                            : "Adequate"}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleTransferRequest(item)}
+                        >
+                          <ArrowLeftRight className="h-4 w-4 mr-2" />
+                          Transfer
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="history">

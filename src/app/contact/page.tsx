@@ -1,6 +1,5 @@
 "use client";
 import { useState } from "react";
-import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
@@ -99,7 +98,6 @@ export default function ContactUs() {
   return (
     <div>
       <SiteHeader2 />
-      <Toaster />
       <div className="min-h-screen bg-muted/40">
         <div className="container mx-auto px-4 py-16">
           <h1 className="text-4xl font-bold text-center mb-4">Contact Us</h1>

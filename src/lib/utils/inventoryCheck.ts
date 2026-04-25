@@ -1,12 +1,10 @@
-import { PrismaClient } from "@prisma/client";
-import { subDays } from "date-fns";
+import prisma from "@/config/prisma.config";
+import { addDays, subDays } from "date-fns";
 import { NotificationType } from "@prisma/client";
-
-const prisma = new PrismaClient();
 
 export async function periodicInventoryCheck() {
   const today = new Date();
-  const thirtyDaysFromNow = subDays(today, 30);
+  const thirtyDaysFromNow = addDays(today, 30);
   const twoDaysAgo = subDays(today, 2);
 
   const [lowStockItems, expiringItems, lastCheck] = await Promise.all([
@@ -68,21 +66,41 @@ export async function periodicInventoryCheck() {
       expiry_date: item.expiry_date,
     }));
 
-    await prisma.$transaction([
-      prisma.notification.createMany({
-        data: lowStockNotifications,
-      }),
-      prisma.notification.createMany({
-        data: expiringNotifications,
-      }),
-      prisma.systemCheck.create({
-        data: {
-          type: "INVENTORY_CHECK",
-          hospital_id:
-            lowStockItems[0]?.hospital_id || expiringItems[0]?.hospital_id,
-        },
-      }),
-    ]);
+    const transactionOperations = [];
+
+    if (lowStockNotifications.length > 0) {
+      transactionOperations.push(
+        prisma.notification.createMany({
+          data: lowStockNotifications,
+        })
+      );
+    }
+
+    if (expiringNotifications.length > 0) {
+      transactionOperations.push(
+        prisma.notification.createMany({
+          data: expiringNotifications,
+        })
+      );
+    }
+
+    const checkHospitalId =
+      lowStockItems[0]?.hospital_id || expiringItems[0]?.hospital_id;
+
+    if (checkHospitalId) {
+      transactionOperations.push(
+        prisma.systemCheck.create({
+          data: {
+            type: "INVENTORY_CHECK",
+            hospital_id: checkHospitalId,
+          },
+        })
+      );
+    }
+
+    if (transactionOperations.length > 0) {
+      await prisma.$transaction(transactionOperations);
+    }
 
     return lowStockNotifications.length + expiringNotifications.length;
   }

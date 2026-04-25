@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useShowToast } from "@/hooks/useShowToast";
 import io from "socket.io-client";
-import { Toaster } from "@/components/ui/toaster";
 import { Button } from "@/components/ui/button";
 import BreadCrumb from "@/components/BreadCrumb";
 import ExpiryCard from "@/components/Inventory Components/ExpiryCard";
@@ -434,7 +433,6 @@ function convertToJSON(data: string) {
 
   return (
     <React.Fragment>
-      <Toaster />
       <div className="flex-1 min-h-screen bg-muted/40 p-6 overflow-auto">
         <div className="flex flex-col gap-4">
           {loading ? (

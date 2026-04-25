@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import BreadCrumb from "@/components/BreadCrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -29,7 +29,7 @@ import {
   Download,
   Filter,
 } from "lucide-react";
-import { BlobProvider, PDFDownloadLink } from "@react-pdf/renderer";
+import { BlobProvider } from "@react-pdf/renderer";
 
 import {
   InventoryStatusChart,
@@ -39,6 +39,12 @@ import {
 import PDFReport from "./PDFReport";
 
 export default function ReportAnalytics() {
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   // Data for PDF
   const reportData = {
     inventoryStatus: {
@@ -332,11 +338,18 @@ export default function ReportAnalytics() {
           Schedule Report
         </Button>
 
-        <BlobProvider document={<PDFReport data={reportData} />}>
-          {({ url, loading, error }) => (
-            <DownloadButton url={url} loading={loading} error={error} />
-          )}
-        </BlobProvider>
+        {isClient ? (
+          <BlobProvider document={<PDFReport data={reportData} />}>
+            {({ url, loading, error }) => (
+              <DownloadButton url={url} loading={loading} error={error} />
+            )}
+          </BlobProvider>
+        ) : (
+          <Button disabled>
+            <Download className="mr-2 h-4 w-4" />
+            Export Report
+          </Button>
+        )}
       </div>
     </div>
   );

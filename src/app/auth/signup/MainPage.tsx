@@ -2,7 +2,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence, useAnimation } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import {
   Card,
@@ -67,6 +66,7 @@ export default function MainPage() {
   const [selectedDepartment, setSelectedDepartment] = useState<string>("");
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
   const [otpValues, setOtpValues] = useState(["", "", "", "", "", ""]);
   const [formData, setFormData] = useState<FormData>({
     hospitalName: "",
@@ -238,33 +238,88 @@ export default function MainPage() {
     setStep((prev) => prev - 1);
   };
 
+  const requestOtp = async () => {
+    setOtpLoading(true);
+
+    try {
+      const response = await fetch("/api/auth/otp/request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: formData.admin_email,
+          purpose: "signup",
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to send OTP.");
+      }
+
+      showToast(
+        "OTP Sent",
+        "A verification code has been sent to your admin email.",
+        "default"
+      );
+
+      setOtpValues(["", "", "", "", "", ""]);
+      return true;
+    } catch (otpError: unknown) {
+      const message =
+        otpError instanceof Error
+          ? otpError.message
+          : "Failed to send OTP. Please try again.";
+
+      showToast("Unable to Send OTP", message, "destructive");
+      return false;
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const otp = otpValues.join("");
 
-    // OTP validation
-    if (otp !== "123456") {
+    if (!/^\d{6}$/.test(otp)) {
       showToast(
         "Invalid OTP",
-        "Please fill in the correct OTP.",
+        "Please enter a valid 6-digit OTP.",
         "destructive"
       );
       return;
     }
 
-    setIsLoading(true); // Set loading state before making the request
+    setIsLoading(true);
 
     try {
-      const result = await createHospital(formData);
+      const verifyResponse = await fetch("/api/auth/otp/verify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: formData.admin_email,
+          otp,
+          purpose: "signup",
+        }),
+      });
 
-      // If there is no formError, proceed to the next step
+      const verifyResult = await verifyResponse.json();
+      if (!verifyResponse.ok) {
+        throw new Error(verifyResult?.error || "OTP verification failed.");
+      }
+
+      await createHospital(formData);
+
       if (!formError) {
         setStep((prev) => prev + 1);
-        setIsLoading(false); // Stop loading after successful submission
         return;
       }
 
-      // Error handling based on formError codes (received from the backend)
       if (formError === "VALIDATION_ERROR") {
         showToast(
           "Signup Unsuccessful",
@@ -284,15 +339,19 @@ export default function MainPage() {
           "destructive"
         );
       }
-    } catch (error) {
-      // Generic error handling
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "An error occurred while creating the hospital. Please try again later.";
+
       showToast(
         "Error",
-        "An error occurred while creating the hospital. Please try again later.",
+        message,
         "destructive"
       );
     } finally {
-      setIsLoading(false); // Ensure loading state is turned off in case of error as well
+      setIsLoading(false);
     }
   };
 
@@ -514,7 +573,7 @@ export default function MainPage() {
       <div className="flex flex-col justify-center space-x-2 space-y-6 ">
         <div className="flex  justify-between items-center">
           <div className="text-xl ml-2 font-semibold flex">Enter OTP</div>
-          <div className="text-sm ">&quot;123456&quot; for the time being</div>
+          <div className="text-sm">Sent to: {formData.admin_email}</div>
         </div>
 
         <div className="flex justify-center space-x-2">
@@ -535,6 +594,13 @@ export default function MainPage() {
             />
           ))}
         </div>
+        <Button
+          variant="outline"
+          onClick={requestOtp}
+          disabled={otpLoading || isLoading}
+        >
+          {otpLoading ? "Sending..." : "Resend OTP"}
+        </Button>
       </div>
     </div>
   );
@@ -871,11 +937,16 @@ export default function MainPage() {
     setIsLoading(true);
     try {
       if (await validateStep()) {
-        setTimeout(() => {
-          setStep((prev) => prev + 1);
-          setIsLoading(false);
-          showToast("Step Completed", "Moving to the next step.", "default");
-        }, 500);
+        if (step === 3) {
+          const isOtpSent = await requestOtp();
+
+          if (!isOtpSent) {
+            return;
+          }
+        }
+
+        setStep((prev) => prev + 1);
+        showToast("Step Completed", "Moving to the next step.", "default");
       }
     } catch (err: any) {
       showToast("An Unknown error occured", "", "destructive");
@@ -902,7 +973,6 @@ export default function MainPage() {
   };
   return (
     <div className="min-h-screen bg-muted/40 flex items-center justify-center p-4">
-      <Toaster />
       <Card className="w-full max-w-4xl mx-auto">
         <CardHeader className="border-b flex flex-col space-y-2 justify-center items-center">
           <CardTitle className="text-2xl font-bold flex items-center gap-2">

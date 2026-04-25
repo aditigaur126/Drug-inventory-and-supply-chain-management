@@ -27,10 +27,10 @@ import { signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import LoadingComponents from "@/components/LoadingComponents";
 import { toast } from "@/hooks/use-toast";
-import { Toaster } from "@/components/ui/toaster";
 
 export default function Component() {
   const [loading, setLoading] = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otpValues, setOtpValues] = useState(["", "", "", "", "", ""]);
@@ -65,6 +65,52 @@ export default function Component() {
       otpRefs.current[0]?.focus();
     }
   }, [step]);
+
+  const requestOtp = async () => {
+    setOtpLoading(true);
+
+    try {
+      const response = await fetch("/api/auth/otp/request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          purpose: "signin",
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to send OTP.");
+      }
+
+      toast({
+        title: "OTP Sent",
+        description: "A verification code has been sent to your email.",
+      });
+
+      setStep("otp");
+      setOtpValues(["", "", "", "", "", ""]);
+      setError("");
+    } catch (requestError: unknown) {
+      const message =
+        requestError instanceof Error
+          ? requestError.message
+          : "Failed to send OTP. Please try again.";
+
+      toast({
+        title: "Unable to Send OTP",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setOtpLoading(false);
+    }
+  };
 
   const handleOtpChange = (index: number, value: string) => {
     if (value.length <= 1 && /^\d*$/.test(value)) {
@@ -106,9 +152,9 @@ export default function Component() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
     if (step === "signin") {
-      // ... (validation logic remains the same)
-      setStep("otp");
+      await requestOtp();
     } else if (step === "otp") {
       const otp = otpValues.join("");
       if (otp.length !== 6) {
@@ -116,35 +162,52 @@ export default function Component() {
         return;
       }
 
-      if (otp === "123456") {
-        setLoading(true);
-        try {
-          const res = await signIn("credentials", {
+      setLoading(true);
+      try {
+        const verifyResponse = await fetch("/api/auth/otp/verify", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
             email,
-            password,
-            redirect: false,
-          });
-          if (res?.error) {
-            throw new Error(res.error);
-          }
-          setStep("confirmation");
-        } catch (error) {
-          console.error("Sign in error:", error);
-          setStep("error");
-          toast({
-            title: "Login Failed",
-            description: "An error occurred during login. Please try again.",
-            variant: "destructive",
-          });
-        } finally {
-          setLoading(false);
+            otp,
+            purpose: "signin",
+          }),
+        });
+
+        const verifyResult = await verifyResponse.json();
+        if (!verifyResponse.ok) {
+          throw new Error(verifyResult?.error || "OTP verification failed.");
         }
-      } else {
+
+        const res = await signIn("credentials", {
+          email,
+          password,
+          redirect: false,
+        });
+
+        if (res?.error) {
+          throw new Error(res.error);
+        }
+
+        setStep("confirmation");
+      } catch (submitError: unknown) {
+        console.error("Sign in error:", submitError);
+        setStep("error");
+
+        const message =
+          submitError instanceof Error
+            ? submitError.message
+            : "An error occurred during login. Please try again.";
+
         toast({
-          title: "Invalid OTP",
-          description: "Kindly enter the correct OTP or try again later",
+          title: "Login Failed",
+          description: message,
           variant: "destructive",
         });
+      } finally {
+        setLoading(false);
       }
     }
   };
@@ -241,21 +304,7 @@ export default function Component() {
   return (
     <div className={`bg-muted/40 `}>
       <div className="items-end flex flex-col space-y-2 p-5">
-        {step === "signin" && (
-          <>
-            <div className="">For testing purposes credentials:</div>
-            <div>Email: test123@gmail.com</div>
-            <div>Password: 12345678</div>
-          </>
-        )}
-        {step === "otp" && (
-          <>
-            <div className="">OTP for the time being is </div>
-            <div>OTP : 123456</div>
-          </>
-        )}
       </div>
-      <Toaster />
       <div className="min-h-screen flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="space-y-1">
@@ -334,10 +383,14 @@ export default function Component() {
                   <Button
                     className="w-full mt-4"
                     type="submit"
-                    onClick={handleSubmit}
+                    disabled={otpLoading}
                   >
                     {step === "signin" ? (
-                      "Sign In"
+                      otpLoading ? (
+                        <LoadingComponents />
+                      ) : (
+                        "Sign In"
+                      )
                     ) : step === "otp" ? (
                       loading === false ? (
                         "Verify OTP"
@@ -348,16 +401,26 @@ export default function Component() {
                   </Button>
                 </form>
                 {step !== "signin" && (
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => {
-                      setStep("signin");
-                      setOtpValues(["", "", "", "", "", ""]);
-                    }}
-                  >
-                    <ArrowLeft className="mr-2 h-4 w-4" /> Back to Sign In
-                  </Button>
+                  <div className="space-y-2">
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={requestOtp}
+                      disabled={otpLoading || loading}
+                    >
+                      {otpLoading ? "Sending..." : "Resend OTP"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => {
+                        setStep("signin");
+                        setOtpValues(["", "", "", "", "", ""]);
+                      }}
+                    >
+                      <ArrowLeft className="mr-2 h-4 w-4" /> Back to Sign In
+                    </Button>
+                  </div>
                 )}
               </>
             )}
