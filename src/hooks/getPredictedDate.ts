@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { getApiErrorMessage } from "@/lib/apiError";
 
 const usePredictNextPurchase = () => {
   const [data, setData] = useState(null);
@@ -22,7 +23,9 @@ const usePredictNextPurchase = () => {
       );
 
       if (!response.ok) {
-        throw new Error(`Error: ${response.status}`);
+        throw new Error(
+          await getApiErrorMessage(response, "Unable to predict the next purchase date.")
+        );
       }
 
       const result = await response.json();

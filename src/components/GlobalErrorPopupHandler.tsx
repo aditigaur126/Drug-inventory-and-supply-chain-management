@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import axios from "axios";
 import { toast } from "@/hooks/use-toast";
+import { getApiErrorMessage } from "@/lib/apiError";
 
 const TOAST_DEDUPE_WINDOW_MS = 4000;
 const DEFAULT_ERROR_MESSAGE = "An unexpected error occurred. Please try again.";
@@ -100,8 +101,8 @@ export default function GlobalErrorPopupHandler() {
         const response = await originalFetch(...args);
 
         if (!response.ok) {
-          const statusText = response.statusText ? ` ${response.statusText}` : "";
-          showGlobalErrorPopup(`Request failed with status ${response.status}${statusText}.`);
+          const message = await getApiErrorMessage(response, "Request failed. Please try again.");
+          showGlobalErrorPopup(message);
         }
 
         return response;

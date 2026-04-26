@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { FormData } from "@/lib/zodSchema/formSchema";
+import { getApiErrorMessage } from "@/lib/apiError";
 
 interface UseCreateHospitalResponse {
   createHospital: (data: FormData) => Promise<any>;
@@ -27,21 +28,12 @@ const useCreateHospital = (): UseCreateHospitalResponse => {
 
       // Check for response status
       if (!response.ok) {
-        const errorData = await response.json();
-
-        switch (response.status) {
-          case 400:
-            setError("Validation error: Please check your input.");
-            break;
-          case 409:
-            setError(`Conflict error: ${errorData.message}`);
-            break;
-          default:
-            setError("An unexpected error occurred. Please try again.");
-        }
-
-        // Throwing error to prevent execution of success-related logic
-        throw new Error(errorData.message || "An unknown error occurred");
+        const message = await getApiErrorMessage(
+          response,
+          "Unable to create hospital. Please try again."
+        );
+        setError(message);
+        throw new Error(message);
       }
 
       const result = await response.json();

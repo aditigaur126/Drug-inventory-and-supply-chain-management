@@ -1,5 +1,6 @@
 import { Order, OrderItem } from "@/lib/interfaces";
 import { useState, useCallback } from "react";
+import { getApiErrorMessage } from "@/lib/apiError";
 
 export const useOrder = () => {
   const [loading, setLoading] = useState(false);
@@ -20,7 +21,7 @@ export const useOrder = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`Error creating order: ${response.statusText}`);
+        throw new Error(await getApiErrorMessage(response, "Unable to create order."));
       }
 
       const data = await response.json();
@@ -42,7 +43,7 @@ export const useOrder = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`Error fetching orders: ${response.statusText}`);
+        throw new Error(await getApiErrorMessage(response, "Unable to fetch orders."));
       }
 
       const data = await response.json();
@@ -69,7 +70,8 @@ export const useOrder = () => {
         });
 
         if (!response.ok) {
-          setError("Failed to update order items");
+          setError(await getApiErrorMessage(response, "Failed to update order items."));
+          return;
         }
 
         const updatedOrder = await response.json();
@@ -100,7 +102,8 @@ export const useOrder = () => {
       });
 
       if (!response.ok) {
-        setError("Failed to cancel order");
+        setError(await getApiErrorMessage(response, "Failed to cancel order."));
+        return;
       }
 
       const updatedOrder = await response.json();
@@ -122,7 +125,7 @@ export const useOrder = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`Error deleting order: ${response.statusText}`);
+        throw new Error(await getApiErrorMessage(response, "Unable to delete order."));
       }
 
       const data = await response.json();
