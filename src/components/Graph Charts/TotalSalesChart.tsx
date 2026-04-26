@@ -9,7 +9,19 @@ import {
 import { ResponsiveLine } from "@nivo/line";
 import React from "react";
 
-const TotalSalesChart = () => {
+type SalesPoint = { x: string; y: number };
+
+const defaultSeries: SalesPoint[] = [
+  { x: "Mon", y: 0 },
+  { x: "Tue", y: 0 },
+  { x: "Wed", y: 0 },
+  { x: "Thu", y: 0 },
+  { x: "Fri", y: 0 },
+  { x: "Sat", y: 0 },
+  { x: "Sun", y: 0 },
+];
+
+const TotalSalesChart = ({ data }: { data?: SalesPoint[] }) => {
   return (
     <Card>
       <CardHeader>
@@ -17,50 +29,28 @@ const TotalSalesChart = () => {
         <CardDescription>This month</CardDescription>
       </CardHeader>
       <CardContent>
-        <TimeseriesChart className="aspect-[4/3]" />
+        <TimeseriesChart className="aspect-[4/3]" data={data} />
       </CardContent>
     </Card>
   );
 };
 
-function TimeseriesChart(props: any) {
+function TimeseriesChart(props: { className?: string; data?: SalesPoint[] }) {
+  const series = props.data && props.data.length > 0 ? props.data : defaultSeries;
+
   return (
-    <div {...props}>
+    <div className={props.className}>
       <ResponsiveLine
         data={[
           {
-            id: "Desktop",
-            data: [
-              { x: "2018-01-01", y: 7 },
-              { x: "2018-01-02", y: 5 },
-              { x: "2018-01-03", y: 11 },
-              { x: "2018-01-04", y: 9 },
-              { x: "2018-01-05", y: 12 },
-              { x: "2018-01-06", y: 16 },
-              { x: "2018-01-07", y: 13 },
-            ],
-          },
-          {
-            id: "Mobile",
-            data: [
-              { x: "2018-01-01", y: 9 },
-              { x: "2018-01-02", y: 8 },
-              { x: "2018-01-03", y: 13 },
-              { x: "2018-01-04", y: 6 },
-              { x: "2018-01-05", y: 8 },
-              { x: "2018-01-06", y: 14 },
-              { x: "2018-01-07", y: 11 },
-            ],
+            id: "Total Sales",
+            data: series,
           },
         ]}
         margin={{ top: 10, right: 20, bottom: 40, left: 40 }}
         xScale={{
-          type: "time",
-          format: "%Y-%m-%d",
-          useUTC: false,
-          precision: "day",
+          type: "point",
         }}
-        xFormat="time:%Y-%m-%d"
         yScale={{
           type: "linear",
           min: 0,
@@ -71,15 +61,13 @@ function TimeseriesChart(props: any) {
         axisBottom={{
           tickSize: 0,
           tickPadding: 16,
-          format: "%d",
-          tickValues: "every 1 day",
         }}
         axisLeft={{
           tickSize: 0,
           tickValues: 5,
           tickPadding: 16,
         }}
-        colors={["#2563eb", "#e11d48"]}
+        colors={["#2563eb"]}
         pointSize={6}
         useMesh={true}
         gridYValues={6}

@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { useOrder } from "@/hooks/use-order";
+import useInventory from "@/hooks/use-inventory";
 import BreadCrumb from "@/components/BreadCrumb";
 import SearchInputField from "@/components/SearchInputField";
 import OrderFilters from "./order-filter";
@@ -14,8 +15,7 @@ import OrderStatusChart from "@/components/Graph Charts/OrderStatusChart";
 import SupplierPerformanceChart from "@/components/Graph Charts/SupplierPerformanceChart";
 import OrderLoadingComponent from "@/components/Order Components/OrderLoadingComponent";
 import Cart, { CartItem } from "./cart";
-import MedicalSupplyCart from "./temp/cart"
-import OrderSheet from "./temp/order-sheet";
+import OrderSheet from "./order-sheet";
 import OrderTable from "./order-table";
 import { useCart } from "@/hooks/use-cart";
 
@@ -27,48 +27,127 @@ export default function OrdersPage() {
   const [pageSize] = useState(10);
   const { clearCart } = useCart();
   const { loading, error, orders, fetchOrders, createOrder } = useOrder();
+  const {
+    items: inventoryItems,
+    fetchItems: fetchInventoryItems,
+    loading: inventoryLoading,
+  } = useInventory();
 
   useEffect(() => {
     fetchOrders();
-  }, [fetchOrders]);
+    fetchInventoryItems();
+  }, [fetchOrders, fetchInventoryItems]);
 
-  const handleSubmitOrder = async (items:any) => {
-    // Implement your order submission logic here
-    console.log('Submitting order with items:', items);
-    // You would typically send this data to your backend API
-  };
+  const totalSalesSeries = useMemo(() => {
+    if (!orders || orders.length === 0) {
+      return [];
+    }
+
+    const byDay = new Map<string, number>();
+    for (const order of orders) {
+      const date = new Date(order.order_date);
+      const dayLabel = date.toLocaleDateString(undefined, {
+        month: "short",
+        day: "2-digit",
+      });
+      byDay.set(dayLabel, (byDay.get(dayLabel) || 0) + order.total_amount);
+    }
+
+    return Array.from(byDay.entries())
+      .slice(-7)
+      .map(([x, y]) => ({ x, y: Number(y.toFixed(2)) }));
+  }, [orders]);
+
+  const orderStatusSlices = useMemo(() => {
+    if (!orders || orders.length === 0) {
+      return [];
+    }
+
+    const byStatus = new Map<string, number>();
+    for (const order of orders) {
+      byStatus.set(order.status, (byStatus.get(order.status) || 0) + 1);
+    }
+
+    return Array.from(byStatus.entries()).map(([id, value]) => ({ id, value }));
+  }, [orders]);
+
+  const inventoryLevelBars = useMemo(() => {
+    if (!inventoryItems || inventoryItems.length === 0) {
+      return [];
+    }
+
+    const byItem = new Map<string, number>();
+    for (const item of inventoryItems) {
+      byItem.set(item.item_name, (byItem.get(item.item_name) || 0) + item.quantity);
+    }
+
+    return Array.from(byItem.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([name, count]) => ({ name, count }));
+  }, [inventoryItems]);
+
+  const supplierPerformanceSeries = useMemo(() => {
+    if (!orders || orders.length === 0) {
+      return [];
+    }
+
+    const supplierTotals = new Map<string, number>();
+    for (const order of orders) {
+      for (const item of order.orderItems || []) {
+        supplierTotals.set(
+          item.item_supplier,
+          (supplierTotals.get(item.item_supplier) || 0) + item.quantity * item.unit_price
+        );
+      }
+    }
+
+    const topSuppliers = Array.from(supplierTotals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
+    return topSuppliers.map(([supplier, total]) => ({
+      id: supplier,
+      data: [
+        { x: "Current", y: Number(total.toFixed(2)) },
+        { x: "Projected", y: Number((total * 1.08).toFixed(2)) },
+      ],
+    }));
+  }, [orders]);
+
   const handleCheckout = async (cartItems: CartItem[]) => {
-    const currentDate = new Date();
-    const randomDays = Math.floor(Math.random() * 3) + 3;
-
-    const submissionData = {
-      order_date: currentDate.toISOString(),
-      expected_delivery_date: new Date(
-        currentDate.setDate(currentDate.getDate() + randomDays)
-      ).toISOString(),
-      orderItems: cartItems.map((item) => ({
-        item_id: item.item.item_id,
-        item_name: item.item.item_name,
-        unit_price: item.unit_price,
-        item_category: item.item.category,
-        description: item.item.description,
-        item_supplier: item.item.supplier,
-        quantity: item.quantity,
-        department: item.department.department,
-      })),
-      vendor: cartItems.map((item) => item.item.supplier).join(", "),
-      status: "pending",
-      paymentStatus: false,
-      total_amount: cartItems.reduce(
-        (total, item) => total + item.quantity * item.unit_price,
-        0
-      ),
-    };
-
     try {
-      await createOrder(submissionData);
-      await clearCart();
-      window.location.reload();
+      const currentDate = new Date();
+      const expectedDate = new Date(currentDate);
+      expectedDate.setDate(expectedDate.getDate() + 5);
+
+      const submissionData = {
+        order_date: currentDate.toISOString(),
+        expected_delivery_date: expectedDate.toISOString(),
+        orderItems: cartItems.map((item) => ({
+          item_id: item.item.item_id,
+          item_name: item.item.item_name,
+          unit_price: item.unit_price,
+          item_category: item.item.category,
+          description: item.item.description,
+          item_supplier: item.item.supplier,
+          quantity: item.quantity,
+          department: item.department.department,
+        })),
+        vendor: cartItems.map((item) => item.item.supplier).join(", "),
+        status: "pending",
+        paymentStatus: false,
+        total_amount: cartItems.reduce(
+          (total, item) => total + item.quantity * item.unit_price,
+          0
+        ),
+      };
+
+      if (!loading && !inventoryLoading) {
+        await createOrder(submissionData);
+        await clearCart();
+        window.location.reload();
+      }
     } catch (error) {
       console.error("Failed to create order:", error);
     }
@@ -150,12 +229,10 @@ export default function OrdersPage() {
           <h1 className="text-2xl font-bold">Orders</h1>
           <div className="flex space-x-4 items-center">
             <div>
-              <OrderSheet/>
-              {/* <OrderSheet loading={loading} /> */}
+              <OrderSheet loading={loading} />
             </div>
             <div>
-              <MedicalSupplyCart onSubmitOrder={handleSubmitOrder} />
-              {/* <Cart onCheckout={handleCheckout} /> */}
+              <Cart onCheckout={handleCheckout} />
             </div>
           </div>
         </div>
@@ -186,12 +263,12 @@ export default function OrdersPage() {
         />
         <div className="grid gap-8 mt-8">
           <div className="grid md:grid-cols-2 gap-6">
-            <TotalSalesChart />
-            <InventoryLevelsChart />
+            <TotalSalesChart data={totalSalesSeries} />
+            <InventoryLevelsChart data={inventoryLevelBars} />
           </div>
           <div className="grid md:grid-cols-2 gap-6">
-            <OrderStatusChart />
-            <SupplierPerformanceChart />
+            <OrderStatusChart data={orderStatusSlices} />
+            <SupplierPerformanceChart data={supplierPerformanceSeries} />
           </div>
         </div>
       </div>

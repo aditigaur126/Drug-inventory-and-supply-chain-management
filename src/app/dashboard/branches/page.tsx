@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,122 +44,153 @@ import { toast } from "@/components/ui/use-toast";
 import SearchInputField from "@/components/SearchInputField";
 
 interface Medicine {
-  id: number;
+  id: string;
   name: string;
   stock: number;
-  branchId: number;
+  branchId: string;
+  branchName: string;
+  state: string;
+  pincode: string;
   capacity: number;
   critical: number;
 }
 
 interface Branch {
-  id: number;
+  id: string;
   name: string;
-  city: string;
+  state: string;
+  pincode: string;
+  region?: string;
 }
 
-// Mock data for demonstration
-const branches: Branch[] = [
-  { id: 1, name: "Central Hospital", city: "New York" },
-  { id: 2, name: "Mercy Medical Center", city: "Los Angeles" },
-  { id: 3, name: "St. John's Hospital", city: "Chicago" },
-];
+interface TransferHistory {
+  id: string;
+  from: string;
+  to: string;
+  medicine: string;
+  quantity: number;
+  status: "Approved" | "Pending" | "Rejected";
+  date: string;
+}
+
+interface BranchesResponse {
+  hospitals: Array<{
+    id: string;
+    hospitalName: string;
+    state: string;
+    pincode: string;
+    region?: string;
+  }>;
+  inventory: Medicine[];
+  transferHistory: Array<{
+    id: string;
+    from: string;
+    to: string;
+    medicine: string;
+    quantity: number;
+    status: "Approved" | "Pending" | "Rejected";
+    date: string;
+  }>;
+  currentHospitalId: string;
+}
+
+const estimateDistanceKm = (from: Branch, to: Branch) => {
+  if (from.id === to.id) return 0;
+  const fromPin = Number.parseInt(from.pincode || "0", 10);
+  const toPin = Number.parseInt(to.pincode || "0", 10);
+  const pinDistance =
+    Number.isFinite(fromPin) && Number.isFinite(toPin)
+      ? Math.abs(fromPin - toPin) / 10
+      : 0;
+  const statePenalty = from.state === to.state ? 35 : 320;
+  return Math.round(statePenalty + pinDistance);
+};
+
+const matchesDistanceFilter = (
+  km: number,
+  filter: "all" | "near" | "medium" | "far"
+) => {
+  if (filter === "all") return true;
+  if (filter === "near") return km <= 150;
+  if (filter === "medium") return km > 150 && km <= 500;
+  return km > 500;
+};
 
 export default function BranchesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBranch, setSelectedBranch] = useState("all");
+  const [distanceFromBranch, setDistanceFromBranch] = useState("current");
+  const [selectedDistanceFilter, setSelectedDistanceFilter] = useState<
+    "all" | "near" | "medium" | "far"
+  >("all");
   const [selectedStockFilter, setSelectedStockFilter] = useState("all");
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [selectedMedicine, setSelectedMedicine] = useState<Medicine | null>(
     null
   );
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [inventory, setInventory] = useState<Medicine[]>([]);
+  const [transferHistory, setTransferHistory] = useState<TransferHistory[]>([]);
+  const [currentHospitalId, setCurrentHospitalId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const inventory = [
-    {
-      id: 1,
-      name: "Aspirin",
-      branchId: 1,
-      stock: 500,
-      capacity: 1000,
-      critical: 100,
-    },
-    {
-      id: 2,
-      name: "Ibuprofen",
-      branchId: 1,
-      stock: 30,
-      capacity: 500,
-      critical: 50,
-    },
-    {
-      id: 3,
-      name: "Amoxicillin",
-      branchId: 2,
-      stock: 200,
-      capacity: 400,
-      critical: 30,
-    },
-    {
-      id: 4,
-      name: "Lisinopril",
-      branchId: 2,
-      stock: 40,
-      capacity: 200,
-      critical: 50,
-    },
-    {
-      id: 5,
-      name: "Metformin",
-      branchId: 3,
-      stock: 150,
-      capacity: 300,
-      critical: 100,
-    },
-    {
-      id: 6,
-      name: "Amlodipine",
-      branchId: 3,
-      stock: 20,
-      capacity: 150,
-      critical: 50,
-    },
-  ];
+  useEffect(() => {
+    const loadBranchesData = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch("/api/hospital/branches");
+        const result = (await response.json()) as BranchesResponse & {
+          error?: string;
+        };
 
-  const transferHistory = [
-    {
-      id: 1,
-      from: "Central Hospital",
-      to: "Mercy Medical Center",
-      medicine: "Ibuprofen",
-      quantity: 100,
-      status: "Approved",
-      date: "2023-06-01",
-    },
-    {
-      id: 2,
-      from: "St. John's Hospital",
-      to: "Central Hospital",
-      medicine: "Aspirin",
-      quantity: 200,
-      status: "Pending",
-      date: "2023-06-02",
-    },
-    {
-      id: 3,
-      from: "Mercy Medical Center",
-      to: "St. John's Hospital",
-      medicine: "Amlodipine",
-      quantity: 50,
-      status: "Rejected",
-      date: "2023-06-03",
-    },
-  ];
+        if (!response.ok) {
+          throw new Error(result.error || "Unable to load branches data.");
+        }
 
-  const filteredInventory = inventory.filter(
-    (item) =>
-      (selectedBranch === "all" ||
-        item.branchId === parseInt(selectedBranch)) &&
+        setBranches(
+          result.hospitals.map((hospital) => ({
+            id: hospital.id,
+            name: hospital.hospitalName,
+            state: hospital.state,
+            pincode: hospital.pincode,
+            region: hospital.region,
+          }))
+        );
+        setInventory(result.inventory);
+        setTransferHistory(result.transferHistory);
+        setCurrentHospitalId(result.currentHospitalId);
+      } catch (error) {
+        toast({
+          title: "Unable to load branches",
+          description:
+            error instanceof Error
+              ? error.message
+              : "Something went wrong while loading branches data.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadBranchesData();
+  }, []);
+
+  const originBranch = useMemo(() => {
+    if (distanceFromBranch !== "current") {
+      return branches.find((branch) => branch.id === distanceFromBranch) ?? null;
+    }
+    return branches.find((branch) => branch.id === currentHospitalId) ?? null;
+  }, [branches, distanceFromBranch, currentHospitalId]);
+
+  const filteredInventory = inventory.filter((item) => {
+    const branch = branches.find((candidate) => candidate.id === item.branchId);
+    const distanceKm =
+      branch && originBranch ? estimateDistanceKm(originBranch, branch) : 0;
+
+    return (
+      (selectedBranch === "all" || item.branchId === selectedBranch) &&
       (selectedStockFilter === "all" ||
         (selectedStockFilter === "stock" && item.stock > 0) ||
         (selectedStockFilter === "low-stock" &&
@@ -167,8 +198,10 @@ export default function BranchesPage() {
           item.stock <= item.critical) ||
         (selectedStockFilter === "over-stock" && item.stock > item.capacity) ||
         (selectedStockFilter === "non-stock" && item.stock <= 0)) &&
+      matchesDistanceFilter(distanceKm, selectedDistanceFilter) &&
       item.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+    );
+  });
 
   const getStockLevelColor = (
     stock: number,
@@ -195,8 +228,8 @@ export default function BranchesPage() {
   };
 
   const handleTransferSubmit = (
-    fromBranch: number,
-    toBranch: number,
+    fromBranch: string,
+    toBranch: string,
     quantity: number
   ) => {
     // Here you would typically make an API call to submit the transfer request
@@ -214,17 +247,16 @@ export default function BranchesPage() {
       }
       return item;
     });
-    // You would update your state here, e.g.:
-    // setInventory(updatedInventory);
+    setInventory(updatedInventory);
   };
 
-  const handleApproveTransfer = (transferId: number) => {
+  const handleApproveTransfer = (transferId: string) => {
     // Logic to approve transfer
     console.log(`Approved transfer ${transferId}`);
   };
 
 
-  const handleRejectTransfer = (transferId: number) => {
+  const handleRejectTransfer = (transferId: string) => {
     // Logic to reject transfer
     console.log(`Rejected transfer ${transferId}`);
   };
@@ -242,14 +274,13 @@ export default function BranchesPage() {
 
       <div className="flex justify-between items-center mb-4 ">
         <div className="flex items-center  space-x-2">
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <SearchInputField
-              placeholder="Search Medicines..."
-              value={searchTerm}
-              onChange={(e: any) => setSearchTerm(e.target.value)}
-            />
-          </div>
+          <SearchInputField
+            placeholder="Search Medicines..."
+            value={searchTerm}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              setSearchTerm(e.target.value)
+            }
+          />
           <Select value={selectedBranch} onValueChange={setSelectedBranch}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Select branch" />
@@ -257,7 +288,7 @@ export default function BranchesPage() {
             <SelectContent>
               <SelectItem value="all">All Branches</SelectItem>
               {branches.map((branch) => (
-                <SelectItem key={branch.id} value={branch.id.toString()}>
+                <SelectItem key={branch.id} value={branch.id}>
                   {branch.name}
                 </SelectItem>
               ))}
@@ -276,6 +307,38 @@ export default function BranchesPage() {
               <SelectItem value="low-stock">Low Stock</SelectItem>
               <SelectItem value="over-stock">Over Stock</SelectItem>
               <SelectItem value="non-stock">Non Stock</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            value={distanceFromBranch}
+            onValueChange={setDistanceFromBranch}
+          >
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Distance from" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="current">From My Hospital</SelectItem>
+              {branches.map((branch) => (
+                <SelectItem key={`origin-${branch.id}`} value={branch.id}>
+                  {branch.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={selectedDistanceFilter}
+            onValueChange={(value: "all" | "near" | "medium" | "far") =>
+              setSelectedDistanceFilter(value)
+            }
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Distance filter" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Distances</SelectItem>
+              <SelectItem value="near">Near (0-150 km)</SelectItem>
+              <SelectItem value="medium">Medium (151-500 km)</SelectItem>
+              <SelectItem value="far">Far (&gt;500 km)</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -371,16 +434,26 @@ export default function BranchesPage() {
         </TabsList>
 
         <TabsContent value="inventory">
-          {filteredInventory.length === 0 ? (
+          {loading ? (
             <Card>
               <CardContent className="py-10 text-center text-muted-foreground">
-                No medicines found for the selected branch/stock filters.
+                Loading branches data...
+              </CardContent>
+            </Card>
+          ) : filteredInventory.length === 0 ? (
+            <Card>
+              <CardContent className="py-10 text-center text-muted-foreground">
+                No medicines found for the selected filters.
               </CardContent>
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredInventory.map((item) => {
                 const branch = branches.find((b) => b.id === item.branchId);
+                const distanceKm =
+                  originBranch && branch
+                    ? estimateDistanceKm(originBranch, branch)
+                    : 0;
                 const stockPercentage = (item.stock / item.capacity) * 100;
                 const stockLevelColor = getStockLevelColor(
                   item.stock,
@@ -401,7 +474,10 @@ export default function BranchesPage() {
                         )}
                       </CardTitle>
                       <p className="text-sm text-muted-foreground">
-                        {branch?.name}
+                        {branch?.name} · {branch?.state}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Distance: {distanceKm} km from {originBranch?.name || "selected origin"}
                       </p>
                     </CardHeader>
                     <CardContent>
@@ -463,7 +539,7 @@ export default function BranchesPage() {
                 <TableBody>
                   {transferHistory.map((transfer) => (
                     <TableRow key={transfer.id}>
-                      <TableCell>{transfer.date}</TableCell>
+                      <TableCell>{new Date(transfer.date).toLocaleDateString()}</TableCell>
                       <TableCell>{transfer.from}</TableCell>
                       <TableCell>{transfer.to}</TableCell>
                       <TableCell>{transfer.medicine}</TableCell>
@@ -506,8 +582,8 @@ interface TransferDialogProps {
   selectedMedicine: Medicine | null;
   branches: Branch[];
   onTransferSubmit: (
-    fromBranch: number,
-    toBranch: number,
+    fromBranch: string,
+    toBranch: string,
     quantity: number
   ) => void;
 }
@@ -526,7 +602,7 @@ const TransferDialog: React.FC<TransferDialogProps> = ({
     if (selectedMedicine && destinationBranch && quantity) {
       onTransferSubmit(
         selectedMedicine.branchId,
-        parseInt(destinationBranch),
+        destinationBranch,
         parseInt(quantity)
       );
       onClose();

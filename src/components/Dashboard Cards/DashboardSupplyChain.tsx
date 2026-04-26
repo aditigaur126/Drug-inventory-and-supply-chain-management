@@ -7,7 +7,11 @@ import {
   CardTitle,
 } from "../ui/card";
 
-const DashboardSupplyChainCard = () => {
+const DashboardSupplyChainCard = ({
+  onTimeDeliveryRate,
+}: {
+  onTimeDeliveryRate: number;
+}) => {
   return (
     <Card>
       <CardHeader className="pb-4">
@@ -20,9 +24,8 @@ const DashboardSupplyChainCard = () => {
         <div className="grid gap-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-2xl font-bold">95%</h3>
+              <h3 className="text-2xl font-bold">{onTimeDeliveryRate}%</h3>
               <p className="text-muted-foreground">On-Time Delivery</p>
-              <div className="text-xs text-gray-500">(Currently Static)</div>
             </div>
             <Truck className="h-8 w-8 text-primary" />
           </div>

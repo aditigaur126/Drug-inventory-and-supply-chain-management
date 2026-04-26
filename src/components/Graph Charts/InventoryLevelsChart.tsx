@@ -8,7 +8,13 @@ import {
 import React from "react";
 import { ResponsiveBar } from "@nivo/bar";
 
-const InventoryLevelsChart = () => {
+type InventoryBar = { name: string; count: number };
+
+const defaultBars: InventoryBar[] = [
+  { name: "No Data", count: 0 },
+];
+
+const InventoryLevelsChart = ({ data }: { data?: InventoryBar[] }) => {
   return (
     <Card>
       <CardHeader>
@@ -16,24 +22,19 @@ const InventoryLevelsChart = () => {
         <CardDescription>Top 5 products</CardDescription>
       </CardHeader>
       <CardContent>
-        <BarChart className="aspect-[4/3]" />
+        <BarChart className="aspect-[4/3]" data={data} />
       </CardContent>
     </Card>
   );
 };
 
-function BarChart(props: any) {
+function BarChart(props: { className?: string; data?: InventoryBar[] }) {
+  const bars = props.data && props.data.length > 0 ? props.data : defaultBars;
+
   return (
-    <div {...props}>
+    <div className={props.className}>
       <ResponsiveBar
-        data={[
-          { name: "Jan", count: 111 },
-          { name: "Feb", count: 157 },
-          { name: "Mar", count: 129 },
-          { name: "Apr", count: 150 },
-          { name: "May", count: 119 },
-          { name: "Jun", count: 72 },
-        ]}
+        data={bars}
         keys={["count"]}
         indexBy="name"
         margin={{ top: 0, right: 0, bottom: 40, left: 40 }}

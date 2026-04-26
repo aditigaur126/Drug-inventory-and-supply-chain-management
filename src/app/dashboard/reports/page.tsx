@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import BreadCrumb from "@/components/BreadCrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -21,8 +21,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  BarChart,
-  PieChart,
   Activity,
   Calendar,
   Clock,
@@ -32,31 +30,146 @@ import {
 import { BlobProvider } from "@react-pdf/renderer";
 
 import {
-  InventoryStatusChart,
-  DemandAnalyticsChart,
-  StockUsageTrendsChart,
+  DemandAnalyticsChartLive,
+  InventoryStatusChartLive,
+  StockUsageTrendsChartLive,
 } from "./ChartImages";
 import PDFReport from "./PDFReport";
+import useInventory from "@/hooks/use-inventory";
+import { useOrder } from "@/hooks/use-order";
 
 export default function ReportAnalytics() {
   const [isClient, setIsClient] = useState(false);
+  const { items, fetchItems, loading: inventoryLoading } = useInventory();
+  const { orders, fetchOrders, loading: ordersLoading } = useOrder();
 
   useEffect(() => {
     setIsClient(true);
-  }, []);
+    fetchItems();
+    fetchOrders();
+  }, [fetchItems, fetchOrders]);
+
+  const inStock = useMemo(
+    () => items.filter((item) => item.quantity > item.threshold_quantity).length,
+    [items]
+  );
+  const lowStock = useMemo(
+    () =>
+      items.filter(
+        (item) => item.quantity > 0 && item.quantity <= item.threshold_quantity
+      ).length,
+    [items]
+  );
+  const outOfStock = useMemo(
+    () => items.filter((item) => item.quantity <= 0).length,
+    [items]
+  );
+
+  const criticalItems = useMemo(() => {
+    const today = new Date();
+    const soonDate = new Date(today);
+    soonDate.setDate(today.getDate() + 30);
+
+    return items
+      .filter((item) => {
+        const expiry = new Date(item.expiry_date);
+        return (
+          item.quantity <= item.threshold_quantity ||
+          item.quantity <= 0 ||
+          expiry <= soonDate
+        );
+      })
+      .slice(0, 6)
+      .map((item) => {
+        const expiry = new Date(item.expiry_date);
+        if (item.quantity <= 0) {
+          return { name: item.item_name, status: "Out of Stock" };
+        }
+        if (item.quantity <= item.threshold_quantity) {
+          return { name: item.item_name, status: "Low Stock" };
+        }
+        if (expiry <= soonDate) {
+          return { name: item.item_name, status: "Expiring Soon" };
+        }
+        return { name: item.item_name, status: "Stable" };
+      });
+  }, [items]);
+
+  const demandData = useMemo(() => {
+    const demandMap = new Map<string, number>();
+    for (const order of orders || []) {
+      for (const orderItem of order.orderItems || []) {
+        demandMap.set(
+          orderItem.item_name,
+          (demandMap.get(orderItem.item_name) || 0) + orderItem.quantity
+        );
+      }
+    }
+
+    const top = Array.from(demandMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6);
+
+    return {
+      labels: top.map(([name]) => name),
+      values: top.map(([, qty]) => qty),
+    };
+  }, [orders]);
+
+  const trendData = useMemo(() => {
+    const monthly = new Map<string, number>();
+    for (const order of orders || []) {
+      const month = new Date(order.order_date).toLocaleDateString(undefined, {
+        month: "short",
+      });
+      const qty = (order.orderItems || []).reduce(
+        (sum, item) => sum + item.quantity,
+        0
+      );
+      monthly.set(month, (monthly.get(month) || 0) + qty);
+    }
+
+    const entries = Array.from(monthly.entries()).slice(-6);
+    return {
+      labels: entries.map(([month]) => month),
+      values: entries.map(([, qty]) => qty),
+    };
+  }, [orders]);
+
+  const recentOrders = useMemo(() => {
+    return [...(orders || [])]
+      .sort(
+        (a, b) =>
+          new Date(b.order_date).getTime() - new Date(a.order_date).getTime()
+      )
+      .slice(0, 5);
+  }, [orders]);
+
+  const averageProcessingTimeDays = useMemo(() => {
+    const successfulOrders = (orders || []).filter(
+      (order) => order.status === "SUCCESS" && order.expected_delivery_date
+    );
+
+    if (successfulOrders.length === 0) return 0;
+
+    const totalDays = successfulOrders.reduce((sum, order) => {
+      const orderDate = new Date(order.order_date).getTime();
+      const deliveredDate = new Date(order.expected_delivery_date as string).getTime();
+      const diffDays = Math.max(0, (deliveredDate - orderDate) / (1000 * 60 * 60 * 24));
+      return sum + diffDays;
+    }, 0);
+
+    return Number((totalDays / successfulOrders.length).toFixed(1));
+  }, [orders]);
 
   // Data for PDF
   const reportData = {
     inventoryStatus: {
-      inStock: 300,
-      lowStock: 50,
-      outOfStock: 10,
+      inStock,
+      lowStock,
+      outOfStock,
     },
-    criticalItems: [
-      { name: "Disprin", status: "Low Stock" },
-      { name: "Broncorex", status: "Expiring Soon" },
-      { name: "Oximeter", status: "Out of Stock" },
-    ],
+    criticalItems,
   };
 
   interface DownloadButtonProps {
@@ -68,7 +181,7 @@ export default function ReportAnalytics() {
   const DownloadButton: React.FC<DownloadButtonProps> = ({
     url,
     loading,
-    error,
+    error: _error,
   }) => (
     <Button
       disabled={loading}
@@ -100,19 +213,26 @@ export default function ReportAnalytics() {
             <CardTitle className="text-sm font-medium">
               Inventory Status
             </CardTitle>
-            <PieChart className="h-4 w-4 text-muted-foreground" />
+            <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <InventoryStatusChart />
+            <InventoryStatusChartLive
+              inStock={inStock}
+              lowStock={lowStock}
+              outOfStock={outOfStock}
+            />
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Stock Levels</CardTitle>
-            <BarChart className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Demand Analytics</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <DemandAnalyticsChart />
+            <DemandAnalyticsChartLive
+              labels={demandData.labels}
+              values={demandData.values}
+            />
           </CardContent>
         </Card>
         <Card>
@@ -124,20 +244,16 @@ export default function ReportAnalytics() {
           </CardHeader>
           <CardContent>
             <ul className="space-y-2">
-              <li className="flex justify-between items-center">
-                <span>Disprin</span>
-                <span className="text-red-500 font-semibold">Low Stock</span>
-              </li>
-              <li className="flex justify-between items-center">
-                <span>Cough Syrup</span>
-                <span className="text-yellow-500 font-semibold">
-                  Expiring Soon
-                </span>
-              </li>
-              <li className="flex justify-between items-center">
-                <span>Oximeter</span>
-                <span className="text-red-500 font-semibold">Out of Stock</span>
-              </li>
+              {criticalItems.length > 0 ? (
+                criticalItems.map((item) => (
+                  <li key={`${item.name}-${item.status}`} className="flex justify-between items-center">
+                    <span>{item.name}</span>
+                    <span className="text-red-500 font-semibold">{item.status}</span>
+                  </li>
+                ))
+              ) : (
+                <li className="text-muted-foreground">No critical items.</li>
+              )}
             </ul>
           </CardContent>
         </Card>
@@ -152,7 +268,10 @@ export default function ReportAnalytics() {
           <CardTitle>Stock Usage Trends</CardTitle>
         </CardHeader>
         <CardContent>
-          <StockUsageTrendsChart />
+          <StockUsageTrendsChartLive
+            labels={trendData.labels}
+            values={trendData.values}
+          />
         </CardContent>
       </Card>
     );
@@ -175,38 +294,36 @@ export default function ReportAnalytics() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableRow>
-                <TableCell>Paracetamol</TableCell>
-                <TableCell>Pharmaceuticals</TableCell>
-                <TableCell>2023-08-15</TableCell>
-                <TableCell>
-                  <span className="text-yellow-500">●</span> Expiring Soon
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell>Oximeter</TableCell>
-                <TableCell>Medical Devices</TableCell>
-                <TableCell>2023-09-30</TableCell>
-                <TableCell>
-                  <span className="text-green-500">●</span> Good
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell>Cough Syrup</TableCell>
-                <TableCell>Consumables</TableCell>
-                <TableCell>2023-07-31</TableCell>
-                <TableCell>
-                  <span className="text-red-500">●</span> Critical
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell>Tablets </TableCell>
-                <TableCell>Consumables</TableCell>
-                <TableCell>2023-08-02</TableCell>
-                <TableCell>
-                  <span className="text-yellow-500">●</span> Critical
-                </TableCell>
-              </TableRow>
+              {items.slice(0, 10).map((item) => {
+                const expiry = new Date(item.expiry_date);
+                const daysLeft = Math.ceil(
+                  (expiry.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+                );
+
+                let status = "Good";
+                let color = "text-green-500";
+
+                if (item.quantity <= item.threshold_quantity || daysLeft <= 30) {
+                  status = "Expiring Soon";
+                  color = "text-yellow-500";
+                }
+
+                if (item.quantity <= 0 || daysLeft <= 7) {
+                  status = "Critical";
+                  color = "text-red-500";
+                }
+
+                return (
+                  <TableRow key={item.item_id + item.batch_number}>
+                    <TableCell>{item.item_name}</TableCell>
+                    <TableCell>{item.category}</TableCell>
+                    <TableCell>{expiry.toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      <span className={color}>●</span> {status}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>
@@ -221,7 +338,10 @@ export default function ReportAnalytics() {
           <CardTitle>Demand Analytics</CardTitle>
         </CardHeader>
         <CardContent>
-          <DemandAnalyticsChart />
+          <DemandAnalyticsChartLive
+            labels={demandData.labels}
+            values={demandData.values}
+          />
         </CardContent>
       </Card>
     );
@@ -246,26 +366,15 @@ export default function ReportAnalytics() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow>
-                    <TableCell>#1234</TableCell>
-                    <TableCell>2023-07-01</TableCell>
-                    <TableCell>Completed</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>#1235</TableCell>
-                    <TableCell>2023-07-02</TableCell>
-                    <TableCell>Completed</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>#1236</TableCell>
-                    <TableCell>2023-07-02</TableCell>
-                    <TableCell>Processing</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>#1237</TableCell>
-                    <TableCell>2023-07-03</TableCell>
-                    <TableCell>Processing</TableCell>
-                  </TableRow>
+                  {recentOrders.map((order) => (
+                    <TableRow key={order.id}>
+                      <TableCell>#{(order.id || "").slice(0, 8)}</TableCell>
+                      <TableCell>
+                        {new Date(order.order_date).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>{order.status}</TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </div>
@@ -274,7 +383,7 @@ export default function ReportAnalytics() {
               <div className="flex items-center space-x-4">
                 <Clock className="h-8 w-8 text-blue-500" />
                 <div>
-                  <p className="text-2xl font-bold">2.5 days</p>
+                  <p className="text-2xl font-bold">{averageProcessingTimeDays} days</p>
                   <p className="text-sm text-gray-500">
                     Average processing time
                   </p>
@@ -296,6 +405,14 @@ export default function ReportAnalytics() {
         ]}
       />
       <h1 className="text-2xl font-bold mb-4">Reports Analytics</h1>
+
+      {(inventoryLoading || ordersLoading) && (
+        <Card className="mb-6">
+          <CardContent className="py-6 text-muted-foreground">
+            Loading live report data...
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap gap-4 mb-6">

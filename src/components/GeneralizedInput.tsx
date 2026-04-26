@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Eye, EyeOff } from "lucide-react";
 
 interface InputFieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label: string;
@@ -19,6 +19,7 @@ const GeneralizedInput: React.FC<InputFieldProps> = ({
 }) => {
   const [localError, setLocalError] = useState<string>("");
   const [value, setValue] = useState<string>("");
+  const [showPassword, setShowPassword] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -62,6 +63,12 @@ const GeneralizedInput: React.FC<InputFieldProps> = ({
   };
 
   const displayError = error || localError;
+  const isPasswordField = type === "password";
+  const resolvedType = isPasswordField
+    ? showPassword
+      ? "text"
+      : "password"
+    : type;
 
   return (
     <div className="space-y-2">
@@ -69,14 +76,26 @@ const GeneralizedInput: React.FC<InputFieldProps> = ({
       <div className="relative">
         <Input
           id={id}
-          type={type}
-          className={`${displayError ? "border-destructive" : ""}`}
+          type={resolvedType}
+          className={`${displayError ? "border-destructive" : ""} ${
+            isPasswordField ? "pr-10" : ""
+          }`}
           {...props}
           value={value}
           onBlur={handleBlur}
           onChange={handleChange}
           ref={inputRef}
         />
+        {isPasswordField && (
+          <button
+            type="button"
+            onClick={() => setShowPassword((prev) => !prev)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+          >
+            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        )}
         {displayError && (
           <div className="absolute right-0 top-full mt-1 flex items-center space-x-1 text-xs text-destructive">
             <AlertCircle className="h-4 w-4" />

@@ -57,6 +57,7 @@ export default function Component() {
     batch_number: string;
     expiry_date: string;
     unit_price: number;
+    threshold_quantity: number;
   }
 
   const [manualItems, setManualItems] = useState<Item[]>([]);
@@ -85,6 +86,7 @@ export default function Component() {
     unit_price: number;
     supplier: string;
     category: string;
+    threshold_quantity: number;
   }>({
     department: "",
     item_name: "",
@@ -94,6 +96,7 @@ export default function Component() {
     unit_price: 0,
     supplier: "",
     category: "",
+    threshold_quantity: 10,
   });
 
   const [qrItems, setQrItems] = useState<Item[]>([]);
@@ -199,6 +202,7 @@ function convertToJSON(data: string) {
               unit_price: parsedData.unit_price,
               supplier: parsedData.supplier ,
               category: parsedData.category ,
+              threshold_quantity: 10,
             },
           ];
           console.log("Mapped Data:", mappedData);
@@ -242,7 +246,11 @@ function convertToJSON(data: string) {
 
   const handleQRSubmit = async () => {
     try {
-      await addItems(qrItems);
+      const itemsWithThreshold = qrItems.map(item => ({
+        ...item,
+        threshold_quantity: item.threshold_quantity || 10
+      }));
+      await addItems(itemsWithThreshold);
       await fetchItems();
       showToast(
         "Items Added Successfully",
@@ -303,7 +311,11 @@ function convertToJSON(data: string) {
     }
 
     try {
-      await addItems(itemsToSubmit);
+      const itemsWithThreshold = itemsToSubmit.map(item => ({
+        ...item,
+        threshold_quantity: item.threshold_quantity || 10
+      }));
+      await addItems(itemsWithThreshold);
       await fetchItems(); // Refresh the items list
       showToast(
         "Items Added Successfully",
@@ -331,6 +343,7 @@ function convertToJSON(data: string) {
       supplier: "",
       category: "",
       department: "",
+      threshold_quantity: 10,
     });
     setSelectedValue("");
   };
@@ -368,6 +381,7 @@ function convertToJSON(data: string) {
         supplier: "",
         category: "",
         department: "",
+        threshold_quantity: 10,
       });
       setSelectedValue("");
     }
@@ -389,6 +403,7 @@ function convertToJSON(data: string) {
       supplier: "",
       category: "",
       department: "",
+      threshold_quantity: 10,
     });
     setSelectedValue("");
   };

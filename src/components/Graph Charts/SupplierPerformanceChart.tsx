@@ -8,7 +8,26 @@ import {
 import React from "react";
 import { ResponsiveLine } from "@nivo/line";
 
-const SupplierPerformanceChart = () => {
+type SupplierPoint = { x: string; y: number };
+type SupplierSeries = { id: string; data: SupplierPoint[] };
+
+const defaultSeries: SupplierSeries[] = [
+  {
+    id: "No Data",
+    data: [
+      { x: "Week 1", y: 0 },
+      { x: "Week 2", y: 0 },
+      { x: "Week 3", y: 0 },
+      { x: "Week 4", y: 0 },
+    ],
+  },
+];
+
+const SupplierPerformanceChart = ({
+  data,
+}: {
+  data?: SupplierSeries[];
+}) => {
   return (
     <Card>
       <CardHeader>
@@ -16,40 +35,19 @@ const SupplierPerformanceChart = () => {
         <CardDescription>Top 5 suppliers</CardDescription>
       </CardHeader>
       <CardContent>
-        <LineChart className="aspect-[4/3]" />
+        <LineChart className="aspect-[4/3]" data={data} />
       </CardContent>
     </Card>
   );
 };
 
-function LineChart(props: any) {
+function LineChart(props: { className?: string; data?: SupplierSeries[] }) {
+  const series = props.data && props.data.length > 0 ? props.data : defaultSeries;
+
   return (
-    <div {...props}>
+    <div className={props.className}>
       <ResponsiveLine
-        data={[
-          {
-            id: "Desktop",
-            data: [
-              { x: "Jan", y: 43 },
-              { x: "Feb", y: 137 },
-              { x: "Mar", y: 61 },
-              { x: "Apr", y: 145 },
-              { x: "May", y: 26 },
-              { x: "Jun", y: 154 },
-            ],
-          },
-          {
-            id: "Mobile",
-            data: [
-              { x: "Jan", y: 60 },
-              { x: "Feb", y: 48 },
-              { x: "Mar", y: 177 },
-              { x: "Apr", y: 78 },
-              { x: "May", y: 96 },
-              { x: "Jun", y: 204 },
-            ],
-          },
-        ]}
+        data={series}
         margin={{ top: 10, right: 10, bottom: 40, left: 40 }}
         xScale={{
           type: "point",

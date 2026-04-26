@@ -14,21 +14,29 @@ export interface Order {
   id?: string;
   order_id?: string;
   order_date: string;
+  expected_delivery_date?: string;
   status: string;
   paymentStatus: boolean;
+  payment_status?: boolean;
   total_amount: number;
   orderItems: OrderItem[];
 }
 
 export interface Item {
+  id?: string;
   item_id?: string;
+  hospital_id?: string;
+  department_id?: string;
   category: string;
   department: string;
   item_name: string;
   batch_number: string;
   expiry_date: string;
   quantity: number;
+  threshold_quantity: number;
   unit_price: number;
+  supplier?: string;
+  description?: string;
 }
 
 export interface CartItem {

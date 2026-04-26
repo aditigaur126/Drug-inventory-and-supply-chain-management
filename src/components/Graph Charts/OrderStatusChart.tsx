@@ -8,7 +8,11 @@ import {
 } from "@/components/ui/card";
 import { ResponsivePie } from "@nivo/pie";
 
-const OrderStatusChart = () => {
+type StatusSlice = { id: string; value: number };
+
+const defaultSlices: StatusSlice[] = [{ id: "No Data", value: 1 }];
+
+const OrderStatusChart = ({ data }: { data?: StatusSlice[] }) => {
   return (
     <Card>
       <CardHeader>
@@ -16,24 +20,19 @@ const OrderStatusChart = () => {
         <CardDescription>Pending, Fulfilled, Cancelled</CardDescription>
       </CardHeader>
       <CardContent>
-        <PieChart className="aspect-[4/3]" />
+        <PieChart className="aspect-[4/3]" data={data} />
       </CardContent>
     </Card>
   );
 };
 
-function PieChart(props: any) {
+function PieChart(props: { className?: string; data?: StatusSlice[] }) {
+  const slices = props.data && props.data.length > 0 ? props.data : defaultSlices;
+
   return (
-    <div {...props}>
+    <div className={props.className}>
       <ResponsivePie
-        data={[
-          { id: "Jan", value: 111 },
-          { id: "Feb", value: 157 },
-          { id: "Mar", value: 129 },
-          { id: "Apr", value: 150 },
-          { id: "May", value: 119 },
-          { id: "Jun", value: 72 },
-        ]}
+        data={slices}
         sortByValue
         margin={{ top: 10, right: 10, bottom: 10, left: 10 }}
         cornerRadius={0}
@@ -44,7 +43,7 @@ function PieChart(props: any) {
         arcLabel={(d:any) => `${d.id}`}
         arcLabelsTextColor={"#ffffff"}
         arcLabelsRadiusOffset={0.65}
-        colors={["#2563eb"]}
+        colors={["#2563eb", "#16a34a", "#dc2626", "#7c3aed"]}
         theme={{
           labels: {
             text: {
