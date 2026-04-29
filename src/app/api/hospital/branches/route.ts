@@ -84,7 +84,7 @@ export async function GET() {
         sharing_date: "desc",
       },
       take: 50,
-    });
+    }) as any[];
 
     const flattenedInventory = inventory
       .filter(
@@ -111,11 +111,11 @@ export async function GET() {
         toHospitalId: sharing.receiver_hospital_id,
         from: sharing.donorHospital?.hospitalName || "Unknown",
         to: sharing.receiverHospital?.hospitalName || "Unknown",
-        itemId: sharing.item_id || null,
+        itemId: sharing.item_id || null, // May not exist in old schema
         medicine: sharing.item_name || "Unknown Item",
         quantity: sharing.quantity_shared,
-        status: sharing.status || "PENDING",
-        reviewedAt: sharing.reviewed_at,
+        status: sharing.status || "PENDING", // Default if column doesn't exist
+        reviewedAt: sharing.reviewed_at || null, // May not exist in old schema
         date: sharing.sharing_date,
       }));
 
