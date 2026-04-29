@@ -71,20 +71,20 @@ export async function GET() {
       },
     })) as BranchInventoryEntry[];
 
-    const resourceSharing = await prisma.resourceSharing.findMany({
-      include: {
-        donorHospital: {
-          select: { id: true, hospitalName: true },
-        },
-        receiverHospital: {
-          select: { id: true, hospitalName: true },
-        },
-      },
-      orderBy: {
-        sharing_date: "desc",
-      },
-      take: 50,
-    }) as any[];
+    // Query only columns that exist in the old production schema
+    // item_id, status, reviewed_at will be added in a future migration
+    const resourceSharing = await prisma.$queryRaw`
+      SELECT 
+        sharing_id,
+        donor_hospital_id,
+        receiver_hospital_id,
+        item_name,
+        quantity_shared,
+        sharing_date
+      FROM "ResourceSharing"
+      ORDER BY sharing_date DESC
+      LIMIT 50
+    ` as any[];
 
     const flattenedInventory = inventory
       .filter(
@@ -103,19 +103,34 @@ export async function GET() {
         capacity: Math.max(entry.threshold_quantity * 4, entry.quantity + 50),
       }));
 
-    const transferHistory = (resourceSharing as any[])
-      .filter((sharing) => sharing.donorHospital && sharing.receiverHospital)
+    // Fetch hospital names for the sharing records
+    const hospitalIds = new Set<string>();
+    resourceSharing.forEach((sharing) => {
+      hospitalIds.add(sharing.donor_hospital_id);
+      hospitalIds.add(sharing.receiver_hospital_id);
+    });
+
+    const hospitals_map = await prisma.hospital.findMany({
+      where: { id: { in: Array.from(hospitalIds) } },
+      select: { id: true, hospitalName: true },
+    });
+
+    const hospitalMap = new Map(
+      hospitals_map.map((h: any) => [h.id, h.hospitalName])
+    );
+
+    const transferHistory = resourceSharing
       .map((sharing) => ({
         id: sharing.sharing_id,
         fromHospitalId: sharing.donor_hospital_id,
         toHospitalId: sharing.receiver_hospital_id,
-        from: sharing.donorHospital?.hospitalName || "Unknown",
-        to: sharing.receiverHospital?.hospitalName || "Unknown",
-        itemId: sharing.item_id || null, // May not exist in old schema
+        from: hospitalMap.get(sharing.donor_hospital_id) || "Unknown",
+        to: hospitalMap.get(sharing.receiver_hospital_id) || "Unknown",
+        itemId: null, // Not in old schema yet
         medicine: sharing.item_name || "Unknown Item",
         quantity: sharing.quantity_shared,
-        status: sharing.status || "PENDING", // Default if column doesn't exist
-        reviewedAt: sharing.reviewed_at || null, // May not exist in old schema
+        status: "PENDING", // Default for old schema
+        reviewedAt: null, // Not in old schema yet
         date: sharing.sharing_date,
       }));
 
