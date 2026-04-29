@@ -3,6 +3,27 @@ import prisma from "@/config/prisma.config";
 import validateSession from "@/lib/validateSession";
 import { getMissingTableMessage, isMissingTableError } from "@/lib/prismaErrors";
 
+type BranchInventoryEntry = {
+  id: string;
+  hospital: {
+    id: string;
+    hospitalName: string;
+    state: string;
+    pincode: string;
+  } | null;
+  item: {
+    item_id: string;
+    item_name: string;
+  } | null;
+  quantity: number;
+  threshold_quantity: number;
+};
+
+type BranchInventoryItem = BranchInventoryEntry & {
+  hospital: NonNullable<BranchInventoryEntry["hospital"]>;
+  item: NonNullable<BranchInventoryEntry["item"]>;
+};
+
 export async function GET() {
   const sessionResult = await validateSession();
   if ("error" in sessionResult) {
@@ -12,7 +33,7 @@ export async function GET() {
     );
   }
 
-  const { userId } = sessionResult;
+  const { userId, hospitalName } = sessionResult;
 
   try {
     const hospitals = await prisma.hospital.findMany({
@@ -28,7 +49,7 @@ export async function GET() {
       },
     });
 
-    const inventory = await prisma.medicalInventory.findMany({
+    const inventory = (await prisma.medicalInventory.findMany({
       include: {
         hospital: {
           select: {
@@ -40,19 +61,23 @@ export async function GET() {
         },
         item: {
           select: {
+            item_id: true,
             item_name: true,
           },
         },
       },
-    });
+      orderBy: {
+        expiry_date: "asc",
+      },
+    })) as BranchInventoryEntry[];
 
     const resourceSharing = await prisma.resourceSharing.findMany({
       include: {
         donorHospital: {
-          select: { hospitalName: true },
+          select: { id: true, hospitalName: true },
         },
         receiverHospital: {
-          select: { hospitalName: true },
+          select: { id: true, hospitalName: true },
         },
       },
       orderBy: {
@@ -61,27 +86,38 @@ export async function GET() {
       take: 50,
     });
 
-    const flattenedInventory = inventory.map((entry) => ({
-      id: entry.id,
-      name: entry.item.item_name,
-      branchId: entry.hospital.id,
-      branchName: entry.hospital.hospitalName,
-      state: entry.hospital.state,
-      pincode: entry.hospital.pincode,
-      stock: entry.quantity,
-      critical: entry.threshold_quantity,
-      capacity: Math.max(entry.threshold_quantity * 4, entry.quantity + 50),
-    }));
+    const flattenedInventory = inventory
+      .filter(
+        (entry): entry is BranchInventoryItem => Boolean(entry.hospital && entry.item)
+      )
+      .map((entry) => ({
+        id: entry.id,
+        itemId: entry.item.item_id,
+        name: entry.item.item_name,
+        branchId: entry.hospital.id,
+        branchName: entry.hospital.hospitalName,
+        state: entry.hospital.state,
+        pincode: entry.hospital.pincode,
+        stock: entry.quantity,
+        critical: entry.threshold_quantity,
+        capacity: Math.max(entry.threshold_quantity * 4, entry.quantity + 50),
+      }));
 
-    const transferHistory = resourceSharing.map((sharing) => ({
-      id: sharing.sharing_id,
-      from: sharing.donorHospital.hospitalName,
-      to: sharing.receiverHospital.hospitalName,
-      medicine: sharing.item_name,
-      quantity: sharing.quantity_shared,
-      status: "Approved",
-      date: sharing.sharing_date,
-    }));
+    const transferHistory = (resourceSharing as any[])
+      .filter((sharing) => sharing.donorHospital && sharing.receiverHospital)
+      .map((sharing) => ({
+        id: sharing.sharing_id,
+        fromHospitalId: sharing.donor_hospital_id,
+        toHospitalId: sharing.receiver_hospital_id,
+        from: sharing.donorHospital?.hospitalName || "Unknown",
+        to: sharing.receiverHospital?.hospitalName || "Unknown",
+        itemId: sharing.item_id || null,
+        medicine: sharing.item_name || "Unknown Item",
+        quantity: sharing.quantity_shared,
+        status: sharing.status || "PENDING",
+        reviewedAt: sharing.reviewed_at,
+        date: sharing.sharing_date,
+      }));
 
     return NextResponse.json(
       {
@@ -89,10 +125,11 @@ export async function GET() {
         inventory: flattenedInventory,
         transferHistory,
         currentHospitalId: userId,
+        currentHospitalName: hospitalName,
       },
       { status: 200 }
     );
-  } catch (error) {
+  } catch (error: any) {
     console.error("Branches API error:", error);
 
     if (isMissingTableError(error)) {

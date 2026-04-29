@@ -45,6 +45,7 @@ import SearchInputField from "@/components/SearchInputField";
 
 interface Medicine {
   id: string;
+  itemId: string;
   name: string;
   stock: number;
   branchId: string;
@@ -65,12 +66,16 @@ interface Branch {
 
 interface TransferHistory {
   id: string;
+  fromHospitalId: string;
+  toHospitalId: string;
   from: string;
   to: string;
+  itemId?: string | null;
   medicine: string;
   quantity: number;
-  status: "Approved" | "Pending" | "Rejected";
+  status: "APPROVED" | "PENDING" | "REJECTED";
   date: string;
+  reviewedAt?: string | null;
 }
 
 interface BranchesResponse {
@@ -84,14 +89,19 @@ interface BranchesResponse {
   inventory: Medicine[];
   transferHistory: Array<{
     id: string;
+    fromHospitalId: string;
+    toHospitalId: string;
     from: string;
     to: string;
+    itemId?: string | null;
     medicine: string;
     quantity: number;
-    status: "Approved" | "Pending" | "Rejected";
+    status: "APPROVED" | "PENDING" | "REJECTED";
     date: string;
+    reviewedAt?: string | null;
   }>;
   currentHospitalId: string;
+  currentHospitalName?: string;
 }
 
 const estimateDistanceKm = (from: Branch, to: Branch) => {
@@ -133,6 +143,7 @@ export default function BranchesPage() {
   const [inventory, setInventory] = useState<Medicine[]>([]);
   const [transferHistory, setTransferHistory] = useState<TransferHistory[]>([]);
   const [currentHospitalId, setCurrentHospitalId] = useState<string | null>(null);
+  const [currentHospitalName, setCurrentHospitalName] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -160,6 +171,7 @@ export default function BranchesPage() {
         setInventory(result.inventory);
         setTransferHistory(result.transferHistory);
         setCurrentHospitalId(result.currentHospitalId);
+        setCurrentHospitalName(result.currentHospitalName || "");
       } catch (error) {
         toast({
           title: "Unable to load branches",
@@ -219,7 +231,7 @@ export default function BranchesPage() {
   );
 
   const pendingTransfers = transferHistory.filter(
-    (transfer) => transfer.status === "Pending"
+    (transfer) => transfer.status === "PENDING"
   );
 
   const handleTransferRequest = (medicine: Medicine) => {
@@ -227,38 +239,113 @@ export default function BranchesPage() {
     setTransferDialogOpen(true);
   };
 
-  const handleTransferSubmit = (
+  const handleTransferSubmit = async (
     fromBranch: string,
-    toBranch: string,
+    _toBranch: string,
     quantity: number
   ) => {
-    // Here you would typically make an API call to submit the transfer request
-    console.log(
-      `Transfer request submitted: ${quantity} units from branch ${fromBranch} to branch ${toBranch}`
-    );
-    toast({
-      title: "Transfer Request Submitted",
-      description: `${quantity} units of ${selectedMedicine?.name} requested for transfer.`,
-    });
-    // Update the local state to reflect the transfer
-    const updatedInventory = inventory.map((item) => {
-      if (item.id === selectedMedicine?.id) {
-        return { ...item, stock: item.stock - quantity };
+    try {
+      const response = await fetch("/api/hospital/branches/requests", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          donor_hospital_id: fromBranch,
+          item_id: selectedMedicine?.itemId,
+          quantity_shared: quantity,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to create transfer request");
       }
-      return item;
-    });
-    setInventory(updatedInventory);
+
+      toast({
+        title: "Transfer Request Submitted",
+        description: `${quantity} units of ${selectedMedicine?.name} were requested successfully.`,
+      });
+
+      window.location.reload();
+    } catch (error) {
+      toast({
+        title: "Request Failed",
+        description:
+          error instanceof Error ? error.message : "Unable to create request.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleApproveTransfer = (transferId: string) => {
-    // Logic to approve transfer
-    console.log(`Approved transfer ${transferId}`);
+  const handleApproveTransfer = async (transferId: string) => {
+    try {
+      const response = await fetch(
+        `/api/hospital/branches/requests/${transferId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ action: "APPROVE" }),
+        }
+      );
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to approve transfer");
+      }
+
+      toast({
+        title: "Transfer Approved",
+        description: result.message || "Stock was transferred successfully.",
+      });
+
+      window.location.reload();
+    } catch (error) {
+      toast({
+        title: "Approval Failed",
+        description:
+          error instanceof Error ? error.message : "Unable to approve request.",
+        variant: "destructive",
+      });
+    }
   };
 
 
-  const handleRejectTransfer = (transferId: string) => {
-    // Logic to reject transfer
-    console.log(`Rejected transfer ${transferId}`);
+  const handleRejectTransfer = async (transferId: string) => {
+    try {
+      const response = await fetch(
+        `/api/hospital/branches/requests/${transferId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ action: "REJECT" }),
+        }
+      );
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to reject transfer");
+      }
+
+      toast({
+        title: "Transfer Rejected",
+        description: result.message || "The request was rejected.",
+      });
+
+      window.location.reload();
+    } catch (error) {
+      toast({
+        title: "Rejection Failed",
+        description:
+          error instanceof Error ? error.message : "Unable to reject request.",
+        variant: "destructive",
+      });
+    }
   };
   return (
     <div className="p-4 w-full min-h-screen flex-1 overflow-y-auto space-y-4 md:p-6 bg-muted/40">
@@ -506,9 +593,10 @@ export default function BranchesPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => handleTransferRequest(item)}
+                          disabled={item.branchId === currentHospitalId}
                         >
                           <ArrowLeftRight className="h-4 w-4 mr-2" />
-                          Transfer
+                          Request
                         </Button>
                       </div>
                     </CardContent>
@@ -547,9 +635,9 @@ export default function BranchesPage() {
                       <TableCell>
                         <Badge
                           variant={
-                            transfer.status === "Approved"
+                            transfer.status === "APPROVED"
                               ? "success"
-                              : transfer.status === "Pending"
+                              : transfer.status === "PENDING"
                               ? "pending"
                               : "destructive"
                           }
@@ -571,6 +659,7 @@ export default function BranchesPage() {
         onClose={() => setTransferDialogOpen(false)}
         selectedMedicine={selectedMedicine}
         branches={branches}
+        currentHospitalName={currentHospitalName}
         onTransferSubmit={handleTransferSubmit}
       />
     </div>
@@ -581,6 +670,7 @@ interface TransferDialogProps {
   onClose: () => void;
   selectedMedicine: Medicine | null;
   branches: Branch[];
+  currentHospitalName: string;
   onTransferSubmit: (
     fromBranch: string,
     toBranch: string,
@@ -593,23 +683,23 @@ const TransferDialog: React.FC<TransferDialogProps> = ({
   onClose,
   selectedMedicine,
   branches,
+  currentHospitalName,
   onTransferSubmit,
 }) => {
-  const [destinationBranch, setDestinationBranch] = useState<string>("");
   const [quantity, setQuantity] = useState<string>("");
 
   const handleSubmit = () => {
-    if (selectedMedicine && destinationBranch && quantity) {
+    if (selectedMedicine && quantity) {
       onTransferSubmit(
         selectedMedicine.branchId,
-        destinationBranch,
+        currentHospitalName,
         parseInt(quantity)
       );
       onClose();
     } else {
       toast({
         title: "Error",
-        description: "Please fill in all fields",
+        description: "Please fill in the quantity",
         variant: "destructive",
       });
     }
@@ -619,7 +709,7 @@ const TransferDialog: React.FC<TransferDialogProps> = ({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Request Transfer</DialogTitle>
+          <DialogTitle>Request Stock</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           {selectedMedicine ? (
@@ -641,23 +731,13 @@ const TransferDialog: React.FC<TransferDialogProps> = ({
                   }
                 </span>
               </div>
-              <Select onValueChange={setDestinationBranch}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select destination branch" />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches
-                    .filter((b) => b.id !== selectedMedicine.branchId)
-                    .map((branch) => (
-                      <SelectItem key={branch.id} value={branch.id.toString()}>
-                        {branch.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              <div className="flex justify-between items-center">
+                <span className="font-semibold">To:</span>
+                <span>{currentHospitalName || "Your hospital"}</span>
+              </div>
               <Input
                 type="number"
-                placeholder="Quantity to transfer"
+                placeholder="Quantity to request"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
                 max={selectedMedicine.stock}
@@ -671,7 +751,7 @@ const TransferDialog: React.FC<TransferDialogProps> = ({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit}>Submit Request</Button>
+          <Button onClick={handleSubmit}>Send Request</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
