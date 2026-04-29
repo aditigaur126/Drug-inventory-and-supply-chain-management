@@ -131,6 +131,12 @@ export async function GET() {
     );
   } catch (error: any) {
     console.error("Branches API error:", error);
+    console.error("Error details:", {
+      message: error?.message,
+      code: error?.code,
+      type: error?.constructor?.name,
+      stack: error?.stack,
+    });
 
     if (isMissingTableError(error)) {
       return NextResponse.json(
@@ -139,8 +145,14 @@ export async function GET() {
       );
     }
 
+    // Return detailed error for debugging (will remove after fix)
     return NextResponse.json(
-      { error: "Unable to load branches data." },
+      {
+        error: "Unable to load branches data.",
+        message: error?.message || "Unknown error",
+        code: error?.code || null,
+        type: error?.constructor?.name || null,
+      },
       { status: 500 }
     );
   }
