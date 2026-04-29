@@ -3,21 +3,38 @@ import prisma from "@/config/prisma.config";
 import validateSession from "@/lib/validateSession";
 
 export async function POST(request: Request) {
-  const { userId } = await validateSession();
+  const sessionResult = await validateSession();
+  if ("error" in sessionResult) {
+    return NextResponse.json(
+      { error: sessionResult.error },
+      { status: sessionResult.status }
+    );
+  }
+
+  const { userId } = sessionResult;
   try {
     const body = await request.json();
     const { item_id, quantity, department } = body;
+
+    // Input validation
+    if (!item_id || !quantity || !department) {
+      return NextResponse.json(
+        { error: "Invalid input data: item_id, quantity, and department are required" },
+        { status: 400 }
+      );
+    }
+
     const departmentRecord = await prisma.departments.findFirst({
       where: {
-        department:department,
+        department: department,
         hospital_id: userId,
       },
     });
-    // Input validation
-    if (!item_id || !quantity || !departmentRecord) {
+
+    if (!departmentRecord) {
       return NextResponse.json(
-        { error: "Invalid input data" },
-        { status: 400 }
+        { error: `Department '${department}' not found for this hospital` },
+        { status: 404 }
       );
     }
 
@@ -86,7 +103,15 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  const { userId } = await validateSession();
+  const sessionResult = await validateSession();
+  if ("error" in sessionResult) {
+    return NextResponse.json(
+      { error: sessionResult.error },
+      { status: sessionResult.status }
+    );
+  }
+
+  const { userId } = sessionResult;
 
   try {
     const cart = await prisma.cart.findFirst({

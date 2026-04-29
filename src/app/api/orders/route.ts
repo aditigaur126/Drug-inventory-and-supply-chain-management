@@ -4,7 +4,15 @@ import validateSession from "@/lib/validateSession";
 import { OrderStatus } from "@prisma/client";
 
 export async function POST(request: Request) {
-  const { userId } = await validateSession();
+  const sessionResult = await validateSession();
+  if ("error" in sessionResult) {
+    return NextResponse.json(
+      { error: sessionResult.error },
+      { status: sessionResult.status }
+    );
+  }
+
+  const { userId } = sessionResult;
 
   try {
     const body = await request.json();
@@ -69,14 +77,14 @@ export async function POST(request: Request) {
       0
     );
 
-    // Create order
+    // Create order as PENDING (purchase request)
     const order = await prisma.order.create({
       data: {
         hospital: { connect: { id: userId } },
         expected_delivery_date: new Date(expected_delivery_date),
         total_amount,
         payment_status: false,
-        status: "PENDING",
+        status: "PENDING",  // Purchase request pending approval
         orderItems: {
           create: orderItems.map((item) => {
             const fetchedItem = itemMap.get(item.item_id);
@@ -88,6 +96,7 @@ export async function POST(request: Request) {
               quantity: item.quantity,
               unit_price: fetchedItem ? fetchedItem.unit_price : 0,
               department: { connect: { id: department?.id } },
+              orderPlaced: false,  // Marks this as a request, not yet placed
             };
           }),
         },
@@ -135,7 +144,15 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  const { userId } = await validateSession();
+  const sessionResult = await validateSession();
+  if ("error" in sessionResult) {
+    return NextResponse.json(
+      { error: sessionResult.error },
+      { status: sessionResult.status }
+    );
+  }
+
+  const { userId } = sessionResult;
   try {
     const orders = await prisma.order.findMany({
       where: {

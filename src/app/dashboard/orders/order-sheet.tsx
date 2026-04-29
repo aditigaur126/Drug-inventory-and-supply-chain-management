@@ -83,17 +83,32 @@ const OrderSheet = ({ loading }: { loading: boolean }) => {
   }, []);
 
   const handleAddToCart = useCallback(async () => {
-    const selectedItem = items.find(
-      (item) =>
-        item.item_name === formData.item_name &&
-        item.supplier === formData.vendor
-    );
+    try {
+      const selectedItem = items.find(
+        (item) =>
+          item.item_name === formData.item_name &&
+          item.supplier === formData.vendor
+      );
 
-    const selectedDepartment = dropdownDepartments.find(
-      (dept) => dept.label === formData.department
-    );
+      const selectedDepartment = dropdownDepartments.find(
+        (dept) => dept.label === formData.department
+      );
 
-    if (selectedItem && selectedDepartment && formData.quantity) {
+      if (!selectedItem) {
+        console.error("Item not found");
+        return;
+      }
+
+      if (!selectedDepartment) {
+        console.error("Department not found");
+        return;
+      }
+
+      if (!formData.quantity) {
+        console.error("Quantity not specified");
+        return;
+      }
+
       const newItem = {
         item_id: selectedItem.item_id,
         quantity: parseInt(formData.quantity),
@@ -103,7 +118,12 @@ const OrderSheet = ({ loading }: { loading: boolean }) => {
       await addToCart(newItem);
       setFormData({ item_name: "", quantity: "", vendor: "", department: "" });
       setOpen(false);
-      window.location.reload();
+      // Refresh cart without full page reload
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    } catch (error) {
+      console.error("Error adding item to cart:", error);
     }
   }, [formData, items, dropdownDepartments, addToCart]);
 

@@ -22,7 +22,16 @@ const useFetchHospitals = () => {
     const fetchHospitals = async () => {
       try {
         const response = await axios.get("/api/hospital");
-        setHospitals(response.data as Hospital[]);
+        const payload = response.data as
+          | Hospital[]
+          | { data?: Hospital[] }
+          | Record<string, unknown>;
+        const normalizedHospitals = Array.isArray(payload)
+          ? payload
+          : "data" in payload && Array.isArray(payload.data)
+            ? payload.data
+            : [];
+        setHospitals(normalizedHospitals as Hospital[]);
       } catch (err: any) {
         setError(err.message);
       } finally {

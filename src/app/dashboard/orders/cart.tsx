@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Minus, Plus, ShoppingCart, Trash, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/components/ui/use-toast";
 import { useCart } from "@/hooks/use-cart";
+import PaymentModal from "@/components/PaymentModal";
 
 export interface CartItem {
   id: string;
@@ -37,13 +38,12 @@ interface CartProps {
   onCheckout: (items: CartItem[]) => Promise<void>;
 }
 
-
-
-
-const Cart: React.FC<CartProps> =  ({ onCheckout }) => {
+const Cart: React.FC<CartProps> = ({ onCheckout }) => {
   const { cartItems, updateCartItemQuantity, removeCartItem, isLoading } =
     useCart();
   const { toast } = useToast();
+  const [showPayment, setShowPayment] = useState(false);
+  const [orderId, setOrderId] = useState<string>("");
 
   const totalCost = cartItems.reduce(
     (total, item) => total + item.quantity * item.unit_price,
@@ -170,7 +170,19 @@ const Cart: React.FC<CartProps> =  ({ onCheckout }) => {
                 </div>
                 <Button
                   className="w-full"
-                  onClick={() => onCheckout(cartItems)}
+                  onClick={async () => {
+                    try {
+                      await onCheckout(cartItems);
+                      // After successful checkout, get the order ID and show payment
+                      // This will be populated by the onCheckout callback
+                    } catch (error) {
+                      toast({
+                        title: "Checkout Error",
+                        description: "Failed to create order",
+                        variant: "destructive",
+                      });
+                    }
+                  }}
                   disabled={isLoading}
                 >
                   Proceed to Checkout
@@ -179,6 +191,18 @@ const Cart: React.FC<CartProps> =  ({ onCheckout }) => {
             </>
           )}
         </div>
+
+        {/* Payment Modal */}
+        <PaymentModal
+          open={showPayment}
+          onOpenChange={setShowPayment}
+          orderId={orderId}
+          totalAmount={totalCost}
+          onPaymentSuccess={() => {
+            setShowPayment(false);
+            window.location.reload();
+          }}
+        />
       </SheetContent>
     </Sheet>
   );

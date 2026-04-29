@@ -8,7 +8,14 @@ export async function PUT(
 ) {
   try {
     const updateData = await request.json();
-    const { userId } = await validateSession();
+    const sessionResult = await validateSession();
+    if ("error" in sessionResult) {
+      return NextResponse.json(
+        { error: sessionResult.error },
+        { status: sessionResult.status }
+      );
+    }
+    const { userId } = sessionResult;
     const { id } = params;
 
     const existingOrder = await prisma.order.findUnique({

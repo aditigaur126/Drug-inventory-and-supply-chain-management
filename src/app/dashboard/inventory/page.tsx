@@ -169,64 +169,13 @@ function convertToJSON(data: string) {
 }
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await fetch(
-          "https://order-server-phi.vercel.app/last-qr"
-        );
-
-        if (!response.ok) {
-          throw new Error(
-            `Network response was not ok: ${response.statusText}`
-          );
-        }
-
-        const result = await response.json();
-        if (result) {
-          const jsonResult = convertToJSON(result.qrData);
-
-          console.log("JSON Result:", jsonResult);
-
-          if (!jsonResult) {
-            throw new Error("Invalid JSON data");
-          }
-          const parsedData = result 
-
-          const mappedData = [
-            {
-              department: parsedData.department ,
-              item_name: parsedData.item_name ,
-              batch_number: parsedData.batch_number ,
-              expiry_date: parsedData.expiry_date ,
-              quantity: parsedData.quantity,
-              unit_price: parsedData.unit_price,
-              supplier: parsedData.supplier ,
-              category: parsedData.category ,
-              threshold_quantity: 10,
-            },
-          ];
-          console.log("Mapped Data:", mappedData);
-          // Ensure new data is added only if it's unique
-          if (
-            !qrItems.some(
-              (item) => item.batch_number === mappedData[0].batch_number
-            )
-          ) {
-            setQrItems((prevItems) => [...prevItems, ...mappedData]);
-          }
-        }
-      } catch (error) {
-        console.error("Fetch error:", error);
-      }
-    };
-
-    fetchData();
-    const intervalId = setInterval(() => {
-      fetchData();
-    }, 5000);
-    // Cleanup on component unmount
+    // External QR polling (https://order-server-phi.vercel.app/last-qr) removed.
+    // Keeping a no-op effect here so downstream code that depends on
+    // this effect's lifecycle doesn't break. If you want to re-enable
+    // QR ingestion, implement a secure server-side proxy and add
+    // authentication before calling the external service.
     return () => {
-      clearInterval(intervalId); // Stop the interval when the component is unmounted
+      // no-op cleanup
     };
   }, [qrItems]);
 

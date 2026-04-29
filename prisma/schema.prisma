@@ -80,6 +80,7 @@ model Order {
 
   hospital                    Hospital                    @relation("HospitalOrders", fields: [hospital_id], references: [id])
   orderItems                  OrderItem[]                 @relation("OrderItems")
+  payments                     Payment[]                   @relation("OrderPayments")
 }
 
 model OrderItem {
@@ -154,9 +155,13 @@ model ResourceSharing {
   sharing_id                  String                      @id @default(uuid())
   donor_hospital_id           String
   receiver_hospital_id        String
+  item_id                     String?
   item_name                   String
   quantity_shared             Int
+  status                      String                      @default("PENDING")
   sharing_date                DateTime
+  reviewed_at                 DateTime?
+  reviewed_by_hospital_id     String?
 
   donorHospital               Hospital                    @relation("DonorHospitalResourceSharing", fields: [donor_hospital_id], references: [id])
   receiverHospital            Hospital                    @relation("ReceiverHospitalResourceSharing", fields: [receiver_hospital_id], references: [id])
@@ -271,4 +276,33 @@ enum OrderStatus {
   PENDING
   SUCCESS
   CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CARD
+  BANK_TRANSFER
+  UPI
+  NET_BANKING
+  DEMO
+}
+
+model Payment {
+  id                          String                      @id @default(uuid())
+  order_id                    String
+  amount                      Float
+  payment_method              String                      // CARD, BANK_TRANSFER, UPI, NET_BANKING, DEMO
+  status                      PaymentStatus               @default(PENDING)
+  transaction_id              String                      @unique
+  paid_at                     DateTime?
+  created_at                  DateTime                    @default(now())
+  updated_at                  DateTime                    @updatedAt
+
+  order                       Order                       @relation("OrderPayments", fields: [order_id], references: [id])
 }

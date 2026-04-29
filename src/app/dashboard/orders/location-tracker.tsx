@@ -5,7 +5,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
-import io from "socket.io-client";
+// socket.io usage removed: external real-time service disabled
 
 interface Location {
   latitude: number;
@@ -50,31 +50,10 @@ export default function LocationTrackerInner() {
         opacity: 0.7,
       }).addTo(mapInstance);
 
-      const url = "https://order-server-phi.vercel.app/";
-      const socket = io(url);
-
-      socket.on("locationUpdate", (location: Location) => {
-        console.log("Received location update:", location);
-        setLocation(location);
-      });
-
-      fetch(url + "last-location")
-        .then((response) => response.json())
-        .then((location: Location) => {
-          console.log("Fetched last location:", location);
-          if (location && location.latitude && location.longitude) {
-            setLocation(location);
-            locationHistoryRef.current.push([
-              location.latitude,
-              location.longitude,
-            ]);
-          } else {
-            console.warn("Invalid location data received:", location);
-          }
-        })
-        .catch((error) =>
-          console.error("Error fetching last location:", error)
-        );
+      // External location socket and fetch removed (order-server-phi).
+      // If you need live tracking later, implement a secured internal
+      // websocket endpoint or proxy and avoid calling external services
+      // directly from the client.
 
       return () => {
         console.log("Cleaning up map...");
@@ -91,7 +70,6 @@ export default function LocationTrackerInner() {
           polylineRef.current.remove();
           polylineRef.current = null;
         }
-        socket.disconnect();
       };
     }
   }, []);

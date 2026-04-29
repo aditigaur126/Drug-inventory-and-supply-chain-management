@@ -15,7 +15,8 @@ async function validateSession() {
   if (!session || !session.user) {
     return { error: "Unauthorized", status: 401 };
   }
-  const { id: userId, hospitalName } = session.user.user;
+  const sessionUser = (session.user as any)?.user ?? session.user;
+  const { id: userId, hospitalName } = sessionUser || {};
   if (!userId || !hospitalName) {
     return { error: "Invalid session data", status: 401 };
   }

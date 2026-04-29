@@ -12,6 +12,7 @@ interface TransformedDepartment {
   value: string;
   label: string;
 }
+type DepartmentsResponse = Department[] | { departments?: Department[] };
 
 const useDepartments = () => {
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -28,8 +29,11 @@ const useDepartments = () => {
         if (!response.ok) {
           throw new Error("Failed to fetch departments");
         }
-        const data: Department[] = await response.json();
-        setDepartments(data);
+        const data: DepartmentsResponse = await response.json();
+        const normalizedDepartments = Array.isArray(data)
+          ? data
+          : data.departments ?? [];
+        setDepartments(normalizedDepartments);
       } catch (err: any) {
         setError(err.message);
       } finally {

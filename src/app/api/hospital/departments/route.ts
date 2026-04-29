@@ -3,33 +3,39 @@ import validateSession from "@/lib/validateSession";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
-  const { userId, hospitalName, email } = await validateSession();
+  const sessionResult = await validateSession();
+  if ("error" in sessionResult) {
+    return NextResponse.json(
+      { error: sessionResult.error },
+      { status: sessionResult.status }
+    );
+  }
+
+  const { userId, hospitalName, email } = sessionResult;
 
   try {
-    const hospital = await prisma.hospital.findFirst({
-      where: { hospitalName: hospitalName },
-    });
-
-    if (!hospital) {
-      return NextResponse.json(
-        { error: "Hospital not found" },
-        { status: 404 }
-      );
-    }
     const departments = await prisma.departments.findMany({
       where: {
-        hospital_id: String(userId),
+        hospital_id: userId,
+      },
+      select: {
+        id: true,
+        hospital_id: true,
+        hod_name: true,
+        hod_email: true,
+        department: true,
       },
     });
 
-    if (!departments) {
+    if (departments.length === 0) {
       return NextResponse.json(
-        { message: "Departments not found" },
-        { status: 404 }
+        { message: "No departments found for this hospital", departments: [] },
+        { status: 200 }
       );
     }
     return NextResponse.json(departments, { status: 200 });
   } catch (error) {
-    NextResponse.json({ message: "Internal server error" }, { status: 500 });
+    console.error("Error fetching departments:", error);
+    return NextResponse.json({ message: "Internal server error" }, { status: 500 });
   }
 }
