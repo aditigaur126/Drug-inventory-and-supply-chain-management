@@ -22,9 +22,35 @@ export async function PATCH(
     const body = await request.json().catch(() => ({}));
     const action = String(body.action || "APPROVE").toUpperCase();
 
-    const transferRequest = (await prisma.resourceSharing.findUnique({
-      where: { sharing_id: id },
-    })) as any;
+    // Use raw query to avoid selecting columns that may not exist in production
+    // (item_id, status, reviewed_at added in migration 20260427190159)
+    const rows = await prisma.$queryRaw<any[]>`
+      SELECT
+        sharing_id,
+        donor_hospital_id,
+        receiver_hospital_id,
+        item_name,
+        quantity_shared,
+        sharing_date,
+        COALESCE(
+          (SELECT column_name FROM information_schema.columns
+           WHERE table_name='ResourceSharing' AND column_name='item_id' LIMIT 1),
+          NULL
+        ) AS _has_item_id_col,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='ResourceSharing' AND column_name='item_id'
+        ) THEN item_id::text ELSE NULL END AS item_id,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='ResourceSharing' AND column_name='status'
+        ) THEN status ELSE 'PENDING' END AS status
+      FROM "ResourceSharing"
+      WHERE sharing_id = ${id}
+      LIMIT 1
+    `;
+
+    const transferRequest = rows[0] ?? null;
 
     if (!transferRequest) {
       return NextResponse.json(
@@ -47,15 +73,27 @@ export async function PATCH(
       );
     }
 
+    // Helper: update status safely — fall back to raw SQL if columns missing
+    const updateStatus = async (
+      tx: typeof prisma,
+      status: string
+    ): Promise<void> => {
+      try {
+        await (tx as any).resourceSharing.update({
+          where: { sharing_id: id },
+          data: { status, reviewed_at: new Date(), reviewed_by_hospital_id: userId } as any,
+        });
+      } catch {
+        await (tx as any).$executeRaw`
+          UPDATE "ResourceSharing"
+          SET status = ${status}
+          WHERE sharing_id = ${id}
+        `;
+      }
+    };
+
     if (action === "REJECT") {
-      const rejectedRequest = await prisma.resourceSharing.update({
-        where: { sharing_id: id },
-        data: {
-          status: "REJECTED",
-          reviewed_at: new Date(),
-          reviewed_by_hospital_id: userId,
-        } as any,
-      });
+      await updateStatus(prisma, "REJECTED");
 
       await prisma.notification.create({
         data: {
@@ -70,16 +108,21 @@ export async function PATCH(
       });
 
       return NextResponse.json(
-        { ...rejectedRequest, message: "Transfer request rejected" },
+        { sharing_id: id, status: "REJECTED", message: "Transfer request rejected" },
         { status: 200 }
       );
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      // item_id may be null if the row was inserted before the migration
+      if (!transferRequest.item_id) {
+        throw new Error("Transfer request is missing item reference — please re-submit the request");
+      }
+
       const donorInventory = await tx.medicalInventory.findFirst({
         where: {
           hospital_id: transferRequest.donor_hospital_id,
-          item_id: transferRequest.item_id ?? undefined,
+          item_id: transferRequest.item_id,
         },
         orderBy: {
           expiry_date: "asc",
@@ -151,14 +194,8 @@ export async function PATCH(
         });
       }
 
-      const approvedRequest = await tx.resourceSharing.update({
-        where: { sharing_id: id },
-        data: {
-          status: "APPROVED",
-          reviewed_at: new Date(),
-          reviewed_by_hospital_id: userId,
-        } as any,
-      });
+      await updateStatus(tx as any, "APPROVED");
+      const approvedRequest = { sharing_id: id, status: "APPROVED" };
 
       await tx.notification.create({
         data: {
