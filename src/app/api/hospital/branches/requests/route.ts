@@ -74,17 +74,51 @@ export async function POST(request: Request) {
       );
     }
 
-    const requestRecord = await prisma.resourceSharing.create({
-      data: {
+    // Use a raw insert to stay compatible with the production schema which may
+    // not yet have the item_id / status / reviewed_at columns added in the
+    // 20260427190159 migration.  We attempt the full Prisma create first and
+    // fall back to a minimal raw insert that only touches columns that are
+    // guaranteed to exist in the old schema.
+    let requestRecord: any;
+    try {
+      requestRecord = await prisma.resourceSharing.create({
+        data: {
+          donor_hospital_id,
+          receiver_hospital_id: userId,
+          item_id,
+          item_name: item.item_name,
+          quantity_shared,
+          status: "PENDING",
+          sharing_date: new Date(),
+        } as any,
+      });
+    } catch (createError: any) {
+      // If the error is a missing column (migration not yet applied on production)
+      // fall back to inserting only the columns that existed in the original schema.
+      const missingColumn =
+        createError?.message?.includes("item_id") ||
+        createError?.message?.includes("status") ||
+        createError?.message?.includes("reviewed_at") ||
+        createError?.code === "42703"; // PostgreSQL "undefined_column"
+
+      if (!missingColumn) throw createError;
+
+      const sharingId = crypto.randomUUID();
+      await prisma.$executeRaw`
+        INSERT INTO "ResourceSharing"
+          (sharing_id, donor_hospital_id, receiver_hospital_id, item_name, quantity_shared, sharing_date)
+        VALUES
+          (${sharingId}, ${donor_hospital_id}, ${userId}, ${item.item_name}, ${quantity_shared}, NOW())
+      `;
+      requestRecord = {
+        sharing_id: sharingId,
         donor_hospital_id,
         receiver_hospital_id: userId,
-        item_id,
         item_name: item.item_name,
         quantity_shared,
-        status: "PENDING",
         sharing_date: new Date(),
-      } as any,
-    });
+      };
+    }
 
     await prisma.notification.create({
       data: {
