@@ -111,20 +111,35 @@ export async function PATCH(
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      // item_id may be null if the row was inserted before the migration
-      if (!transferRequest.item_id) {
-        throw new Error("Transfer request is missing item reference — please re-submit the request");
+      // item_id may be null for requests created before the migration.
+      // Fall back to matching by item_name via the Item table.
+      let donorInventory: any;
+      if (transferRequest.item_id) {
+        donorInventory = await tx.medicalInventory.findFirst({
+          where: {
+            hospital_id: transferRequest.donor_hospital_id,
+            item_id: transferRequest.item_id,
+          },
+          orderBy: { expiry_date: "asc" },
+        });
+      } else {
+        // Resolve item_id from item_name
+        const matchedItem = await tx.item.findFirst({
+          where: { item_name: transferRequest.item_name },
+          select: { item_id: true },
+        });
+        if (!matchedItem) {
+          throw new Error(`Item "${transferRequest.item_name}" not found in the system`);
+        }
+        transferRequest.item_id = matchedItem.item_id;
+        donorInventory = await tx.medicalInventory.findFirst({
+          where: {
+            hospital_id: transferRequest.donor_hospital_id,
+            item_id: matchedItem.item_id,
+          },
+          orderBy: { expiry_date: "asc" },
+        });
       }
-
-      const donorInventory = await tx.medicalInventory.findFirst({
-        where: {
-          hospital_id: transferRequest.donor_hospital_id,
-          item_id: transferRequest.item_id,
-        },
-        orderBy: {
-          expiry_date: "asc",
-        },
-      });
 
       if (!donorInventory || donorInventory.quantity < transferRequest.quantity_shared) {
         throw new Error("Requested stock is no longer available");
