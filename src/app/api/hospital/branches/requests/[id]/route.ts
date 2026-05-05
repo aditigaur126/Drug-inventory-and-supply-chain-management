@@ -206,7 +206,6 @@ export async function PATCH(
         });
       }
 
-      await updateStatus(tx as any, "APPROVED");
       const approvedRequest = { sharing_id: id, status: "APPROVED" };
 
       await tx.notification.create({
@@ -223,6 +222,10 @@ export async function PATCH(
 
       return approvedRequest;
     });
+
+    // Update status outside the transaction so a column-missing error
+    // does not abort the already-committed inventory changes.
+    await updateStatus(prisma, "APPROVED");
 
     return NextResponse.json(
       { ...result, message: "Transfer approved and stock moved successfully" },
