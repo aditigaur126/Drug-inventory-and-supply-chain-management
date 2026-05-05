@@ -22,33 +22,30 @@ export async function PATCH(
     const body = await request.json().catch(() => ({}));
     const action = String(body.action || "APPROVE").toUpperCase();
 
-    // Use raw query to avoid selecting columns that may not exist in production
-    // (item_id, status, reviewed_at added in migration 20260427190159)
-    const rows = await prisma.$queryRaw<any[]>`
-      SELECT
-        sharing_id,
-        donor_hospital_id,
-        receiver_hospital_id,
-        item_name,
-        quantity_shared,
-        sharing_date,
-        COALESCE(
-          (SELECT column_name FROM information_schema.columns
-           WHERE table_name='ResourceSharing' AND column_name='item_id' LIMIT 1),
-          NULL
-        ) AS _has_item_id_col,
-        CASE WHEN EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_name='ResourceSharing' AND column_name='item_id'
-        ) THEN item_id::text ELSE NULL END AS item_id,
-        CASE WHEN EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_name='ResourceSharing' AND column_name='status'
-        ) THEN status ELSE 'PENDING' END AS status
-      FROM "ResourceSharing"
-      WHERE sharing_id = ${id}
-      LIMIT 1
+    // Check which new columns exist in production (migration may not be applied yet)
+    const colCheck = await prisma.$queryRaw<{ column_name: string }[]>`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'ResourceSharing'
+        AND column_name IN ('item_id', 'status', 'reviewed_at')
     `;
+    const existingCols = new Set(colCheck.map((r) => r.column_name));
+
+    // Build a safe query using only columns that exist
+    const selectCols = [
+      `sharing_id`,
+      `donor_hospital_id`,
+      `receiver_hospital_id`,
+      `item_name`,
+      `quantity_shared`,
+      `sharing_date`,
+      existingCols.has("item_id") ? `item_id` : `NULL::text AS item_id`,
+      existingCols.has("status") ? `status` : `'PENDING' AS status`,
+    ].join(", ");
+
+    const rows = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT ${selectCols} FROM "ResourceSharing" WHERE sharing_id = $1 LIMIT 1`,
+      id
+    );
 
     const transferRequest = rows[0] ?? null;
 
